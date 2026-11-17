@@ -4,6 +4,7 @@ import io.inspector.action.GuardRefusedException;
 import io.inspector.catalog.DefinitionDetailResponse.VersionRef;
 import io.inspector.catalog.DefinitionJobsResponse.JobLaneCount;
 import io.inspector.catalog.DefinitionSubscriptionsResponse.SubscriptionRow;
+import io.inspector.client.CaseDefinitionRecord;
 import io.inspector.client.CmmnApiClient;
 import io.inspector.client.FlowablePage;
 import io.inspector.client.GuardedCaller.CallPriority;
@@ -45,7 +46,7 @@ public class DefinitionDetailService {
             return bpmnDetail(engine, bpmn);
         }
         if (cmmn(engine)) {
-            Map<String, Object> cmmn = cases.getCmmnCaseDefinition(engine, CallPriority.INTERACTIVE, definitionId);
+            CaseDefinitionRecord cmmn = cases.getCmmnCaseDefinition(engine, CallPriority.INTERACTIVE, definitionId);
             if (cmmn != null) {
                 return cmmnDetail(engine, cmmn);
             }
@@ -156,20 +157,20 @@ public class DefinitionDetailService {
                 versions);
     }
 
-    private DefinitionDetailResponse cmmnDetail(EngineConfig engine, Map<String, Object> row) {
+    private DefinitionDetailResponse cmmnDetail(EngineConfig engine, CaseDefinitionRecord row) {
         return new DefinitionDetailResponse(
                 engine.id(),
                 "CMMN",
-                str(row, "id"),
-                str(row, "key"),
-                str(row, "name"),
-                number(row.get("version")),
-                bool(row.get("suspended")),
-                str(row, "deploymentId"),
-                str(row, "category"),
-                str(row, "tenantId") != null ? str(row, "tenantId") : engine.tenantId(),
-                str(row, "resourceName"),
-                bool(row.get("graphicalNotationDefined")),
+                row.id(),
+                row.key(),
+                row.name(),
+                number(row.version()),
+                bool(row.suspended()),
+                row.deploymentId(),
+                row.category(),
+                row.tenantId() != null ? row.tenantId() : engine.tenantId(),
+                row.resourceName(),
+                bool(row.graphicalNotationDefined()),
                 List.of());
     }
 

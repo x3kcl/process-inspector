@@ -99,8 +99,7 @@ public class CmmnApiClient {
      * Null when the id is unknown (404) — a definition can be undeployed while its
      * dead-letter jobs linger. Callers resolve DISTINCT ids only (never per job row).
      */
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> getCmmnCaseDefinition(
+    public CaseDefinitionRecord getCmmnCaseDefinition(
             EngineConfig engine, CallPriority priority, String caseDefinitionId) {
         String id = GuardedCaller.safeId(caseDefinitionId);
         try {
@@ -111,7 +110,7 @@ public class CmmnApiClient {
                             .get()
                             .uri(cmmnApiBase(engine) + "/cmmn-repository/case-definitions/{id}", id)
                             .retrieve()
-                            .body(Map.class));
+                            .body(CaseDefinitionRecord.class));
         } catch (HttpClientErrorException.NotFound e) {
             return null;
         }
@@ -538,7 +537,7 @@ public class CmmnApiClient {
      * GET /cmmn-repository/case-definitions — catalog sibling of the process-definition list.
      * Callers capability-gate ({@code scopeType}, ≥ 6.8) first.
      */
-    public FlowablePage listCaseDefinitions(
+    public CaseDefinitionPage listCaseDefinitions(
             EngineConfig engine, CallPriority priority, String key, String nameLike, Boolean latest, int size) {
         UriComponentsBuilder b = UriComponentsBuilder.fromUriString(
                         cmmnApiBase(engine) + "/cmmn-repository/case-definitions")
@@ -556,7 +555,7 @@ public class CmmnApiClient {
         return guarded.call(
                 engine,
                 priority,
-                () -> guarded.readClient(engine).get().uri(uri).retrieve().body(FlowablePage.class));
+                () -> guarded.readClient(engine).get().uri(uri).retrieve().body(CaseDefinitionPage.class));
     }
 
     /** Count-only running cases on one case definition ({@code size=1}, read {@code total}). */

@@ -347,13 +347,14 @@ class CmmnCorrectiveActionServiceTest {
         // on flowable-rest 6.8.0 and 7.1.0, #500): the pre-check derives the name from it.
         when(cmmnClient.getCmmnCaseDefinition(engine, CallPriority.INTERACTIVE, "def-2"))
                 .thenReturn(
-                        Map.of(
-                                "id",
-                                "def-2",
-                                "deploymentId",
-                                "dep-1",
-                                "resource",
-                                "http://engine.test/flowable-rest/cmmn-api/cmmn-repository/deployments/dep-1/resources/case.cmmn"));
+                        CmmnRecords.caseDefinition(
+                                Map.of(
+                                        "id",
+                                        "def-2",
+                                        "deploymentId",
+                                        "dep-1",
+                                        "resource",
+                                        "http://engine.test/flowable-rest/cmmn-api/cmmn-repository/deployments/dep-1/resources/case.cmmn")));
         when(cmmnClient.cmmnDeploymentResourceData(engine, CallPriority.INTERACTIVE, "dep-1", "case.cmmn"))
                 .thenReturn("<planItem id=\"planItem_svc\" definitionRef=\"keepAlive\"/>");
 
@@ -407,7 +408,8 @@ class CmmnCorrectiveActionServiceTest {
         when(cmmnClient.listCmmnPlanItemInstances(eq(prod), eq(CallPriority.INTERACTIVE), any(), eq(0), eq(500)))
                 .thenReturn(CmmnRecords.planItemPage(List.of(), 0));
         when(cmmnClient.getCmmnCaseDefinition(prod, CallPriority.INTERACTIVE, "def-2"))
-                .thenReturn(Map.of("id", "def-2", "deploymentId", "dep-1", "resourceName", "case.cmmn"));
+                .thenReturn(CmmnRecords.caseDefinition(
+                        Map.of("id", "def-2", "deploymentId", "dep-1", "resourceName", "case.cmmn")));
         when(cmmnClient.cmmnDeploymentResourceData(prod, CallPriority.INTERACTIVE, "dep-1", "case.cmmn"))
                 .thenReturn("<case/>");
 
@@ -441,7 +443,8 @@ class CmmnCorrectiveActionServiceTest {
                 .thenReturn(CmmnRecords.planItemPage(
                         List.of(Map.of("id", "inst-1", "planItemDefinitionId", "keepAlive", "state", "active")), 1));
         when(cmmnClient.getCmmnCaseDefinition(prod, CallPriority.INTERACTIVE, "def-2"))
-                .thenReturn(Map.of("id", "def-2", "deploymentId", "dep-1", "resourceName", "case.cmmn"));
+                .thenReturn(CmmnRecords.caseDefinition(
+                        Map.of("id", "def-2", "deploymentId", "dep-1", "resourceName", "case.cmmn")));
         when(cmmnClient.cmmnDeploymentResourceData(prod, CallPriority.INTERACTIVE, "dep-1", "case.cmmn"))
                 .thenReturn("<planItem id=\"planItem_svc\" definitionRef=\"keepAlive\"/>");
         return prod;

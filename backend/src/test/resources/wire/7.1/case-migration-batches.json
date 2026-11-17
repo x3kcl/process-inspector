@@ -1,0 +1,20 @@
+{
+  "data": [
+    {
+      "batchType": "caseMigration",
+      "completeTime": "2026-11-12T17:40:31.418Z",
+      "createTime": "2026-11-12T17:40:19.532Z",
+      "id": "21153102-dec0-11f1-acb8-7eebefdaa7d9",
+      "searchKey": "0bbfeae6-dec0-11f1-acb8-7eebefdaa7d9",
+      "searchKey2": "0c0928ea-dec0-11f1-acb8-7eebefdaa7d9",
+      "status": "completed",
+      "tenantId": null,
+      "url": "http://localhost:8080/flowable-rest/service/management/batches/21153102-dec0-11f1-acb8-7eebefdaa7d9"
+    }
+  ],
+  "order": "asc",
+  "size": 1,
+  "sort": "id",
+  "start": 0,
+  "total": 1
+}

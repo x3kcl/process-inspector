@@ -1,6 +1,7 @@
 package io.inspector.cmmn;
 
 import io.inspector.action.GuardRefusedException;
+import io.inspector.client.CaseDefinitionRecord;
 import io.inspector.client.CmmnApiClient;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.PlanItemPage;
@@ -48,8 +49,9 @@ public final class CaseMigrationPrecheck {
     }
 
     /** Same, for a definition row the caller already holds. */
-    public Set<String> planDefinitionIds(EngineConfig engine, String caseDefinitionId, Map<String, Object> definition) {
-        Object deploymentId = definition.get("deploymentId");
+    public Set<String> planDefinitionIds(
+            EngineConfig engine, String caseDefinitionId, CaseDefinitionRecord definition) {
+        String deploymentId = definition.deploymentId();
         // The real row has no resourceName, only a resource URL (measured 6.8.0 and 7.1.0).
         String resourceName = CaseDetailService.resourceNameOf(definition);
         if (deploymentId == null || resourceName == null) {
@@ -58,8 +60,7 @@ public final class CaseMigrationPrecheck {
                     "target-model-unavailable",
                     "Case definition " + caseDefinitionId + " has no CMMN resource to pre-check. Nothing happened.");
         }
-        String xml = cmmn.cmmnDeploymentResourceData(
-                engine, CallPriority.INTERACTIVE, String.valueOf(deploymentId), resourceName);
+        String xml = cmmn.cmmnDeploymentResourceData(engine, CallPriority.INTERACTIVE, deploymentId, resourceName);
         if (xml == null || xml.isBlank()) {
             throw new GuardRefusedException(
                     HttpStatus.UNPROCESSABLE_ENTITY,
@@ -70,8 +71,9 @@ public final class CaseMigrationPrecheck {
     }
 
     /** The deployed case definition row, or a {@code target-not-deployed} refusal. */
-    public Map<String, Object> definition(EngineConfig engine, String caseDefinitionId) {
-        Map<String, Object> definition = cmmn.getCmmnCaseDefinition(engine, CallPriority.INTERACTIVE, caseDefinitionId);
+    public CaseDefinitionRecord definition(EngineConfig engine, String caseDefinitionId) {
+        CaseDefinitionRecord definition =
+                cmmn.getCmmnCaseDefinition(engine, CallPriority.INTERACTIVE, caseDefinitionId);
         if (definition == null) {
             throw new GuardRefusedException(
                     HttpStatus.NOT_FOUND,

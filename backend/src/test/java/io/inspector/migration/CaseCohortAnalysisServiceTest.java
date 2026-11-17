@@ -104,19 +104,20 @@ class CaseCohortAnalysisServiceTest {
 
     private void models() {
         when(cmmn.getCmmnCaseDefinition(engine, CallPriority.INTERACTIVE, FROM))
-                .thenReturn(Map.of("id", FROM, "key", "demoCase"));
+                .thenReturn(CmmnRecords.caseDefinition(Map.of("id", FROM, "key", "demoCase")));
         // The real row has no resourceName, only the resource URL (measured on 6.8.0 and 7.1.0).
         when(cmmn.getCmmnCaseDefinition(engine, CallPriority.INTERACTIVE, TO))
                 .thenReturn(
-                        Map.of(
-                                "id",
-                                TO,
-                                "key",
-                                "demoCase",
-                                "deploymentId",
-                                "dep-2",
-                                "resource",
-                                "http://engine.test/flowable-rest/cmmn-api/cmmn-repository/deployments/dep-2/resources/v2.cmmn.xml"));
+                        CmmnRecords.caseDefinition(
+                                Map.of(
+                                        "id",
+                                        TO,
+                                        "key",
+                                        "demoCase",
+                                        "deploymentId",
+                                        "dep-2",
+                                        "resource",
+                                        "http://engine.test/flowable-rest/cmmn-api/cmmn-repository/deployments/dep-2/resources/v2.cmmn.xml")));
         when(cmmn.cmmnDeploymentResourceData(engine, CallPriority.INTERACTIVE, "dep-2", "v2.cmmn.xml"))
                 .thenReturn("<planItem id=\"p1\" definitionRef=\"reviewTask\"/>"
                         + "<planItem id=\"p2\" definitionRef=\"approveTask\"/>");
@@ -230,9 +231,9 @@ class CaseCohortAnalysisServiceTest {
     void startRefusesACrossKeyOrSameVersionTargetAndANonAdmin() {
         when(cohorts.listCases(eq(ENGINE), any())).thenReturn(new ListedCohort(FROM, TO, List.of("c"), 1, false));
         when(cmmn.getCmmnCaseDefinition(engine, CallPriority.INTERACTIVE, FROM))
-                .thenReturn(Map.of("id", FROM, "key", "demoCase"));
+                .thenReturn(CmmnRecords.caseDefinition(Map.of("id", FROM, "key", "demoCase")));
         when(cmmn.getCmmnCaseDefinition(engine, CallPriority.INTERACTIVE, TO))
-                .thenReturn(Map.of("id", TO, "key", "anotherCase"));
+                .thenReturn(CmmnRecords.caseDefinition(Map.of("id", TO, "key", "anotherCase")));
         assertThatThrownBy(() -> service.start(ENGINE, filter(), auth))
                 .isInstanceOfSatisfying(
                         GuardRefusedException.class, e -> assertThat(e.code()).isEqualTo("cross-key-target"));

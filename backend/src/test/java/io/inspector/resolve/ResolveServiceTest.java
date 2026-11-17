@@ -69,7 +69,7 @@ class ResolveServiceTest {
         when(cmmnFlowable.getCmmnCaseInstance(engine, CallPriority.INTERACTIVE, CASE_ID))
                 .thenReturn(CmmnRecords.caseInstance(runningCase));
         when(cmmnFlowable.getCmmnCaseDefinition(engine, CallPriority.INTERACTIVE, "def-uuid"))
-                .thenReturn(def("demoFailingCase", "Demo failing case"));
+                .thenReturn(CmmnRecords.caseDefinition(def("demoFailingCase", "Demo failing case")));
 
         ResolveResponse response = service.resolve(CASE_ID, null);
 
