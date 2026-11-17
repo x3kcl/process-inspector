@@ -43,10 +43,15 @@ public final class ActionCurl {
     public static String render(String url, ActionRequest request) {
         String body;
         try {
-            JsonNode tree = CURL_BODY_MAPPER.valueToTree(request != null ? request : ActionRequest.empty());
-            hideSecretValues(tree.get("variable"));
-            if (tree.get("variables") instanceof ArrayNode list) list.forEach(ActionCurl::hideSecretValues);
-            body = CURL_BODY_MAPPER.writeValueAsString(tree);
+            ActionRequest r = request != null ? request : ActionRequest.empty();
+            if (carriesSecretName(r)) {
+                JsonNode tree = CURL_BODY_MAPPER.valueToTree(r);
+                hideSecretValues(tree.get("variable"));
+                if (tree.get("variables") instanceof ArrayNode list) list.forEach(ActionCurl::hideSecretValues);
+                body = CURL_BODY_MAPPER.writeValueAsString(tree);
+            } else {
+                body = CURL_BODY_MAPPER.writeValueAsString(r); // ordinary values: encoded exactly as before
+            }
         } catch (JsonProcessingException e) {
             throw new IllegalStateException("ActionRequest is not serializable", e);
         }
@@ -54,6 +59,12 @@ public final class ActionCurl {
                 + " -H 'Content-Type: application/json'"
                 + " -H 'Authorization: Basic <your-credentials>'"
                 + " -d '" + shellSingleQuote(body) + "'";
+    }
+
+    private static boolean carriesSecretName(ActionRequest r) {
+        return (r.variable() != null && SecretNames.isSecret(r.variable().name()))
+                || (r.variables() != null
+                        && r.variables().stream().anyMatch(v -> v != null && SecretNames.isSecret(v.name())));
     }
 
     /**
