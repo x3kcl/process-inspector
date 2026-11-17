@@ -715,7 +715,7 @@ current-era span, G1/G2/G4 inputs, RETRYING spells, triage_snapshot spans, raw `
 What to do with the folder: do not commit it (it is demo operational data). Hand it over, then the
 review files are written from it: `docs/reviews/S0-PLAYBOOK-DEMAND-2026-10.md` from `playbook/`
 (verdict from `11-demand-excl-seed.csv`; `10-` is the unfiltered comparison) and
-`docs/reviews/ATTENTION-DEFAULT-2026-10.md` from `ledger/` (G5 in `21-`, replay the raw
+`docs/reviews/ATTENTION-DEFAULT-2026-11.md` from `ledger/` (G5 in `21-`, replay the raw
 occurrence rows through `scripts/attention-harm-search.py` / the neutrality test).
 
 ## 9. Compose profiles
