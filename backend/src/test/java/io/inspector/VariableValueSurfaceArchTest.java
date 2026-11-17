@@ -62,6 +62,40 @@ class VariableValueSurfaceArchTest {
         assertThat(offenders).as("handlers exposing a raw variable value").isEmpty();
     }
 
+    /**
+     * #743: the ONE sanctioned carrier of an unmasked secret-named value is the audited reveal's own
+     * response type, allowed here by NAME. Any other record that a handler returns and that carries an
+     * untyped {@code value} component must be the masking choke point itself — no general escape hatch.
+     */
+    static final java.util.Map<String, String> UNMASKED_VALUE_CARRIERS = java.util.Map.of(
+            "RevealedVariable",
+            "the audited reveal (#743): OPERATOR+, one variable, audit row written before the value leaves");
+
+    @Test
+    void onlyTheChokePointAndTheNamedRevealTypeCarryAVariableValue() throws Exception {
+        ClassPathScanningCandidateComponentProvider scanner = new ClassPathScanningCandidateComponentProvider(false);
+        scanner.addIncludeFilter(new AnnotationTypeFilter(RestController.class));
+        Set<String> carriers = new java.util.TreeSet<>();
+        for (var candidate : scanner.findCandidateComponents("io.inspector")) {
+            for (Method method : Class.forName(candidate.getBeanClassName()).getDeclaredMethods()) {
+                if (!AnnotatedElementUtils.hasAnnotation(method, RequestMapping.class)) continue;
+                Set<Class<?>> reached = new HashSet<>();
+                walk(method.getGenericReturnType(), reached);
+                for (Class<?> c : reached) {
+                    if (c.isRecord()
+                            && java.util.Arrays.stream(c.getRecordComponents())
+                                    .anyMatch(rc -> rc.getName().equals("value") && rc.getType() == Object.class)) {
+                        carriers.add(c.getSimpleName());
+                    }
+                }
+            }
+        }
+        Set<String> allowed = new HashSet<>(UNMASKED_VALUE_CARRIERS.keySet());
+        allowed.add("VariableDto");
+        assertThat(carriers).as("records returning an untyped variable value").isSubsetOf(allowed);
+        assertThat(carriers).as("the reveal response is wired").contains("RevealedVariable");
+    }
+
     private static void walk(Type type, Set<Class<?>> seen) {
         if (type instanceof ParameterizedType p) {
             walk(p.getRawType(), seen);
