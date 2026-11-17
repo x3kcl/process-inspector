@@ -409,13 +409,15 @@ body {
   flex-wrap: wrap;
   align-items: center;
 }
-/* #690: one line on detail routes — name + alarms only, the lane/throughput detail is on Stage 0. */
+/* #690: one line on detail routes — name + alarms only, the lane/throughput detail is on Stage 0.
+   Scrolls rather than clips, so an engine past the edge (and its alarm) stays reachable. */
 .engine-strip-compact {
   flex-wrap: nowrap;
-  overflow: hidden;
+  overflow-x: auto;
 }
-.engine-strip-compact .lanes,
-.engine-strip-compact .strip-note,
+.engine-strip-compact .lane:not(.lane-alarm),
+.engine-strip-compact .count-unit,
+.engine-strip-compact .engine-card .strip-note,
 .engine-strip-compact .engine-version,
 .engine-strip-compact .engine-system-link {
   display: none;
