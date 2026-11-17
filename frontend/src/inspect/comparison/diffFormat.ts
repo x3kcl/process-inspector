@@ -1,6 +1,7 @@
 // Pure presentation helpers for the sibling-diff Comparison view (SPEC §5.2). Kept out of
 // the components so the semantics — glyph mapping (never hue-only), value rendering, timing
 // bar scaling — are unit-testable without a DOM.
+import { HIDDEN_SECRET } from '../variables/ledger'
 import type { PathDivergence, TimingDelta, VariableChange, VariableDto } from '../../api/model'
 
 /** The subset of DiagramMarkers that the sibling-diff overlay drives (SPEC §5.2). */
@@ -39,6 +40,8 @@ export function changeGlyph(change: VariableChange): string {
       return '~'
     case 'SAME':
       return '='
+    case 'MASKED':
+      return '?'
   }
 }
 
@@ -54,6 +57,9 @@ export function changeLabel(change: VariableChange): string {
       return 'values differ beyond preview'
     case 'SAME':
       return 'same'
+    case 'MASKED':
+      // #742: same/changed would be a 1-bit oracle on the hidden value.
+      return HIDDEN_SECRET
   }
 }
 
@@ -69,6 +75,7 @@ export function isDivergent(change: VariableChange): boolean {
  */
 export function renderValue(variable: VariableDto | undefined): string {
   if (variable === undefined) return '—'
+  if (variable.masked === true) return HIDDEN_SECRET
   if (variable.truncated === true) {
     const kib = variable.sizeBytes !== undefined ? Math.round(variable.sizeBytes / 1024) : undefined
     return kib !== undefined ? `(${String(kib)} KiB — over preview cap)` : '(over preview cap)'

@@ -41,7 +41,7 @@ public class CaseDetailController {
 
     @GetMapping("/variables")
     @PreAuthorize("@rbac.atLeastOn(authentication, 'VIEWER', #engineId)")
-    public java.util.List<io.inspector.client.VariableRecord> variables(
+    public java.util.List<io.inspector.dto.InstanceVariables.VariableDto> variables(
             @PathVariable String engineId, @PathVariable String caseInstanceId) {
         return cases.variables(engineId, caseInstanceId);
     }

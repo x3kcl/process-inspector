@@ -4060,13 +4060,14 @@ export interface components {
         };
         VariableDelta: {
             /** @enum {string} */
-            change?: "SAME" | "CHANGED" | "ONLY_IN_SUBJECT" | "ONLY_IN_SIBLING" | "DIFFER_BEYOND_PREVIEW";
+            change?: "SAME" | "CHANGED" | "ONLY_IN_SUBJECT" | "ONLY_IN_SIBLING" | "DIFFER_BEYOND_PREVIEW" | "MASKED";
             name?: string;
             sibling?: components["schemas"]["VariableDto"];
             subject?: components["schemas"]["VariableDto"];
         };
         VariableDto: {
             executionId?: string;
+            masked?: boolean;
             name?: string;
             scope?: string;
             /** Format: int64 */
@@ -4075,10 +4076,12 @@ export interface components {
             truncated?: boolean;
             type?: string;
             value?: unknown;
+            valueToken?: string;
         };
         VariableEdit: {
             executionId?: string;
             expectedOldValue?: unknown;
+            expectedValueToken?: string;
             name?: string;
             type?: string;
             value?: unknown;
@@ -4088,13 +4091,6 @@ export interface components {
             operation?: string;
             type?: string;
             value?: unknown;
-        };
-        VariableRecord: {
-            name?: string;
-            scope?: string;
-            type?: string;
-            value?: unknown;
-            valueUrl?: string;
         };
         VersionRef: {
             definitionId?: string;
@@ -5422,7 +5418,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "*/*": components["schemas"]["VariableRecord"][];
+                    "*/*": components["schemas"]["VariableDto"][];
                 };
             };
         };

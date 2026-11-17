@@ -50,7 +50,9 @@ public record SiblingDiffResponse(
         CHANGED,
         ONLY_IN_SUBJECT,
         ONLY_IN_SIBLING,
-        DIFFER_BEYOND_PREVIEW
+        DIFFER_BEYOND_PREVIEW,
+        /** #742: secret-named — SAME/CHANGED would be a 1-bit oracle on the hidden value. */
+        MASKED
     }
 
     /**

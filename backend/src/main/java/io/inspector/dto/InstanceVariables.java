@@ -43,5 +43,37 @@ public record InstanceVariables(
             Long sizeBytes, // serialized size, reported when measured (structured types)
             String scope, // global (process) | local (execution)
             String executionId, // owning execution for local rows
-            String taskId) {} // historic task-scoped rows
+            String taskId, // historic task-scoped rows
+            boolean masked, // #742: secret-named (SecretNames) — no value, no size; the type stays
+            String valueToken) { // #742: opaque CAS token for a masked value (VariableValueToken)
+
+        /**
+         * THE masking choke point (#742, SPEC R-AUD-11): every variable value that leaves the BFF
+         * travels in this record, and its constructor drops the value — and the size/truncation
+         * facts, which leak the length — of a secret-named variable, whoever builds it. Name-based,
+         * top-level only: a json variable's nested keys are not inspected.
+         */
+        public VariableDto {
+            masked = io.inspector.audit.SecretNames.isSecret(name);
+            if (masked) {
+                value = null;
+                truncated = false;
+                sizeBytes = null;
+            } else {
+                valueToken = null;
+            }
+        }
+
+        public VariableDto(
+                String name,
+                String type,
+                Object value,
+                boolean truncated,
+                Long sizeBytes,
+                String scope,
+                String executionId,
+                String taskId) {
+            this(name, type, value, truncated, sizeBytes, scope, executionId, taskId, false, null);
+        }
+    }
 }

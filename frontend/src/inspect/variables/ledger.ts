@@ -24,7 +24,12 @@ export interface VariableEntry {
   sizeBytes?: number
   /** The user pulled the full value through the escape hatch — expansion is unblocked. */
   fullyLoaded?: boolean
+  /** #742: secret-named — the BFF sent no value (SPEC R-AUD-11). */
+  masked?: boolean
 }
+
+/** #742: the masked state, in words — never colour alone, never mistakable for a value. */
+export const HIDDEN_SECRET = 'hidden — secret-named'
 
 /** Plain-language type chips (SPEC §4) — the engine term belongs in the glossary tooltip. */
 export type TypeChip =
@@ -34,6 +39,15 @@ const NUMBER_TYPES = new Set(['long', 'integer', 'short', 'double', 'number'])
 
 export function typeChip(entry: VariableEntry): TypeChip {
   const engineType = entry.engineType?.toLowerCase()
+  // A masked value shipped no value but IS NOT empty — chip from the declared type alone.
+  if (entry.masked === true) {
+    if (engineType === 'boolean') return 'yes-no'
+    if (engineType !== undefined && NUMBER_TYPES.has(engineType)) return 'number'
+    if (engineType === 'date') return 'date'
+    if (engineType === 'json') return 'structured'
+    if (engineType === 'serializable') return 'Java object'
+    return 'text'
+  }
   // A truncated value shipped as null but IS NOT empty — chip from the declared type.
   if (entry.truncated === true && entry.fullyLoaded !== true) {
     if (engineType === 'string') return 'text'
@@ -73,6 +87,7 @@ const PREVIEW_CHAR_CAP = 140
 export const EXPAND_BYTE_CAP = 256 * 1024
 
 export function valuePreview(entry: VariableEntry): ValuePreview {
+  if (entry.masked === true) return { text: HIDDEN_SECRET, muted: true, expandable: false }
   // SPEC §4 size safeguard: over-cap values never ship in the ledger — the row states
   // the fact + size; "load full value" is the explicit escape hatch next to it.
   if (entry.truncated === true && entry.fullyLoaded !== true) {

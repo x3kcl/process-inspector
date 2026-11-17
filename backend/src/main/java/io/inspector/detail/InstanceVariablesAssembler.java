@@ -1,5 +1,6 @@
 package io.inspector.detail;
 
+import io.inspector.audit.VariableValueToken;
 import io.inspector.client.ExecutionRecord;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.HistoricVariableRecord;
@@ -88,6 +89,7 @@ final class InstanceVariablesAssembler {
         }
         // The full fetch is deliberately uncapped — this IS the "load full value" escape
         // hatch; the write cap (5 MiB, SPEC §4a) guards the other direction.
+        // #742: a masked (secret-named) value is replaced by an opaque CAS token — the editor's base.
         return new VariableDto(
                 row.name(),
                 row.type(),
@@ -96,7 +98,9 @@ final class InstanceVariablesAssembler {
                 null,
                 local ? "local" : row.scope(),
                 local ? executionId : null,
-                null);
+                null,
+                false,
+                VariableValueToken.issue(engine.id(), local ? executionId : instanceId, row.name(), row.value()));
     }
 
     private InstanceVariables historicVariables(EngineConfig engine, String instanceId) {

@@ -6,6 +6,7 @@ import { VERBS } from '../actions/catalog'
 import { useToast } from '../components/toast'
 import type { CasePlanItems } from '../api/model'
 import { flattenPlanItems } from './planItemModel'
+import { HIDDEN_SECRET } from '../inspect/variables/ledger'
 
 interface Props {
   engineId: string
@@ -147,7 +148,8 @@ export function CaseOps({ engineId, caseInstanceId, businessKey, planItems }: Pr
       <ul>
         {(Array.isArray(variables.data) ? variables.data : []).map((row) => (
           <li key={String(row.name)}>
-            {String(row.name)} = {JSON.stringify(row.value ?? null)}
+            {String(row.name)} ={' '}
+            {row.masked === true ? HIDDEN_SECRET : JSON.stringify(row.value ?? null)}
           </li>
         ))}
       </ul>
@@ -182,8 +184,15 @@ export function CaseOps({ engineId, caseInstanceId, businessKey, planItems }: Pr
         type="button"
         disabled={name.trim() === '' || action.isPending}
         onClick={() => {
+          // #742: a masked (secret-named) case variable CASes on its read's token, not a typed old value.
+          const masked = (Array.isArray(variables.data) ? variables.data : []).find(
+            (row) => row.name === name.trim() && row.masked === true,
+          )
           run(VERBS.editCaseVariable.verb, {
-            variable: { name: name.trim(), value: nextValue, expectedOldValue: expected },
+            variable:
+              masked !== undefined
+                ? { name: name.trim(), value: nextValue, expectedValueToken: masked.valueToken }
+                : { name: name.trim(), value: nextValue, expectedOldValue: expected },
           })
         }}
       >

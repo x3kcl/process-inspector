@@ -234,7 +234,7 @@ function LedgerRowView({
               )}
             </span>
           )}
-          <CopyButton text={rawCopyText(row)} label="copy raw" />
+          {row.entry.masked !== true && <CopyButton text={rawCopyText(row)} label="copy raw" />}
         </td>
       </tr>
       {editing && editorNode !== undefined && (

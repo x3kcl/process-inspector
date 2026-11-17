@@ -18,6 +18,7 @@ import { useInstanceAction } from '../api/actions'
 import type { ActionRequest } from '../api/actions'
 import type { EngineDto, InstanceDetail } from '../api/model'
 import { fetchInstanceVariable, fetchInstanceVariables } from '../api/queries'
+import { HIDDEN_SECRET } from '../inspect/variables/ledger'
 import { VERBS } from '../actions/catalog'
 import { ModalShell } from '../components/ModalShell'
 import { useToast } from '../components/toast'
@@ -126,6 +127,13 @@ const TYPE_LABELS: Record<ScalarType, string> = {
   boolean: 'yes-no',
 }
 
+function maskedScalarType(type: string | undefined): ScalarType {
+  if (type === 'boolean') return 'boolean'
+  if (type === 'long' || type === 'integer' || type === 'short') return 'long'
+  if (type === 'double') return 'double'
+  return 'string'
+}
+
 function inferScalarType(value: unknown): ScalarType {
   if (typeof value === 'boolean') return 'boolean'
   if (typeof value === 'number') return Number.isInteger(value) ? 'long' : 'double'
@@ -175,7 +183,14 @@ function EditStep({
   })
 
   const originalValue = full.data?.value
-  const scalarType = originalValue === undefined ? 'string' : inferScalarType(originalValue)
+  // #742: a secret-named variable is read masked — no value; its type and CAS token instead.
+  const valueToken = full.data?.masked === true ? full.data.valueToken : undefined
+  const scalarType =
+    valueToken !== undefined
+      ? maskedScalarType(full.data?.type)
+      : originalValue === undefined
+        ? 'string'
+        : inferScalarType(originalValue)
   const [textValue, setTextValue] = useState('')
   const [numberRaw, setNumberRaw] = useState('')
   const [boolValue, setBoolValue] = useState<boolean | undefined>(undefined)
@@ -225,13 +240,19 @@ function EditStep({
                   : undefined
             }
             onClick={() => {
-              if (selected === undefined || originalValue === undefined) return
+              if (
+                selected === undefined ||
+                (originalValue === undefined && valueToken === undefined)
+              )
+                return
               onReview({
                 variable: {
                   name,
                   type: scalarType,
                   value: staged,
-                  expectedOldValue: originalValue,
+                  ...(valueToken !== undefined
+                    ? { expectedValueToken: valueToken }
+                    : { expectedOldValue: originalValue }),
                 },
               })
             }}
@@ -298,9 +319,17 @@ function EditStep({
       {name !== '' && !jsonValued && full.isSuccess && (
         <div className="modal-field">
           <span>Current value</span>
-          <pre className="value-body">{renderOld(originalValue)}</pre>
+          <pre className="value-body">
+            {valueToken !== undefined ? HIDDEN_SECRET : renderOld(originalValue)}
+          </pre>
           <span>New value</span>
-          {scalarType === 'string' && <TextWidget value={textValue} onChange={setTextValue} />}
+          {scalarType === 'string' && (
+            <TextWidget
+              value={textValue}
+              onChange={setTextValue}
+              secret={valueToken !== undefined}
+            />
+          )}
           {(scalarType === 'long' || scalarType === 'double') && (
             <NumberWidget raw={numberRaw} subtype={scalarType} onChange={setNumberRaw} />
           )}

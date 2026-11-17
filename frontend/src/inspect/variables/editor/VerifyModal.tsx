@@ -17,7 +17,7 @@ import { ActionHint } from '../../../components/ActionHint'
 import { GuardFields } from '../../../components/GuardFields'
 import { ModalShell } from '../../../components/ModalShell'
 import { TicketField, ticketValue } from '../../../components/TicketField'
-import { formatBytes, serializedBytes } from '../ledger'
+import { HIDDEN_SECRET, formatBytes, serializedBytes } from '../ledger'
 import { changeSentence, changeLine, countLeaves, diffSummary, short, structuralDiff } from './diff'
 
 interface Props {
@@ -57,8 +57,11 @@ export function VerifyModal({
 }: Props) {
   const variable = request.variable
   const name = variable?.name ?? '?'
-  const before = variable?.expectedOldValue
-  const after = variable?.value
+  // #742: a masked (secret-named) edit carries a token, not the old value — neither value is shown.
+  const token = variable?.expectedValueToken
+  const masked = token !== undefined
+  const before = masked ? HIDDEN_SECRET : variable?.expectedOldValue
+  const after = masked ? HIDDEN_SECRET : variable?.value
   const executionId = variable?.executionId
   const stepLocal = executionId !== undefined
   const environment = engine?.environment
@@ -79,27 +82,31 @@ export function VerifyModal({
     ? 'checking'
     : fresh.isError
       ? 'unknown'
-      : sameValue(fresh.data.value, before)
+      : (masked ? fresh.data.valueToken === token : sameValue(fresh.data.value, before))
         ? 'fresh'
         : 'stale'
 
   const structured =
     (before !== null && typeof before === 'object') || (after !== null && typeof after === 'object')
   const changes = useMemo(() => structuralDiff(before, after), [before, after])
-  const sentence = changeSentence({
-    name,
-    before,
-    after,
-    typeLabel,
-    scopeLabel: stepLocal ? 'applies to this step only' : 'applies to the whole case',
-    targetLabel,
-    engineName: engine?.name ?? engineId,
-    environment,
-  })
-  const byteDelta = serializedBytes(after) - serializedBytes(before)
-  const confirmLabel = structured
-    ? `Change ${name} (${String(changes.length)} field${changes.length === 1 ? '' : 's'}) on ${targetLabel}`
-    : `Change ${name} from ${short(before)} to ${short(after)} on ${targetLabel}`
+  const sentence = masked
+    ? `Change ${name} to a new value — both hidden, secret-named (${typeLabel}, ${stepLocal ? 'applies to this step only' : 'applies to the whole case'}) on ${targetLabel} in ${engine?.name ?? engineId}`
+    : changeSentence({
+        name,
+        before,
+        after,
+        typeLabel,
+        scopeLabel: stepLocal ? 'applies to this step only' : 'applies to the whole case',
+        targetLabel,
+        engineName: engine?.name ?? engineId,
+        environment,
+      })
+  const byteDelta = masked ? 0 : serializedBytes(after) - serializedBytes(before)
+  const confirmLabel = masked
+    ? `Change ${name} (${HIDDEN_SECRET}) on ${targetLabel}`
+    : structured
+      ? `Change ${name} (${String(changes.length)} field${changes.length === 1 ? '' : 's'}) on ${targetLabel}`
+      : `Change ${name} from ${short(before)} to ${short(after)} on ${targetLabel}`
 
   const casConflict = problem?.code === 'cas-conflict'
   const dispatchedMaybe = problem !== undefined && problem.outcome === 'unknown'
@@ -142,7 +149,7 @@ export function VerifyModal({
         <dl className="cas-values">
           <dt>The value you started from</dt>
           <dd>
-            <ValuePane value={problem.expectedOldValue} />
+            <ValuePane value={masked ? HIDDEN_SECRET : problem.expectedOldValue} />
           </dd>
           <dt>Your new value (not applied)</dt>
           <dd>
@@ -150,7 +157,7 @@ export function VerifyModal({
           </dd>
           <dt>The engine's current value</dt>
           <dd>
-            <ValuePane value={problem.currentValue} />
+            <ValuePane value={masked ? HIDDEN_SECRET : problem.currentValue} />
           </dd>
         </dl>
         <p className="value-muted">
@@ -258,7 +265,9 @@ export function VerifyModal({
           ? 'no size change'
           : `size ${byteDelta > 0 ? 'grows' : 'shrinks'} by ${formatBytes(Math.abs(byteDelta))}`}
         {' · '}
-        RECOVERABLE — the old value is kept in the audit trail
+        {masked
+          ? 'NOT recoverable from the inspector — a secret-named value is redacted in the audit trail'
+          : 'RECOVERABLE — the old value is kept in the audit trail'}
       </p>
 
       {freshness === 'checking' && <p className="zero-state">Re-checking the server value…</p>}
@@ -299,10 +308,18 @@ export function VerifyModal({
 
       <details className="exact-request">
         <summary>exact request</summary>
-        <pre className="value-body">{JSON.stringify(request, null, 2)}</pre>
+        <pre className="value-body">
+          {JSON.stringify(
+            masked && variable !== undefined
+              ? { ...request, variable: { ...variable, value: HIDDEN_SECRET } }
+              : request,
+            null,
+            2,
+          )}
+        </pre>
         <p className="value-muted">
-          POST /api/instances/{engineId}/{instanceId}/actions/edit-variable — the expectedOldValue
-          is the compare-and-set precondition.
+          POST /api/instances/{engineId}/{instanceId}/actions/edit-variable — the{' '}
+          {masked ? 'expectedValueToken' : 'expectedOldValue'} is the compare-and-set precondition.
         </p>
       </details>
 

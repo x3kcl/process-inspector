@@ -1,8 +1,10 @@
 package io.inspector.aggregate;
 
+import io.inspector.action.GuardRefusedException;
 import io.inspector.api.MdcPropagatingExecutors;
 import io.inspector.audit.ProtectedInstance;
 import io.inspector.audit.ProtectedInstanceRepository;
+import io.inspector.audit.SecretNames;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessInstanceRecord;
@@ -38,6 +40,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 /**
@@ -96,6 +99,24 @@ public class SearchService {
         this.plan = new SearchEnginePlan(flowable, props, fanout, this);
     }
 
+    /**
+     * #742 (R-AUD-11): a filter on a secret-named variable is a value oracle (a right guess → 1 row,
+     * a wrong one → 0) whatever the operation — and the engine query has no existence-only
+     * operation — so it is refused before any engine call, the criteria echo or the cURL render.
+     */
+    static void refuseSecretVariableFilters(SearchRequest request) {
+        if (request.variables() == null) return;
+        for (SearchRequest.VariableFilter filter : request.variables()) {
+            if (filter != null && SecretNames.isSecret(filter.name())) {
+                throw new GuardRefusedException(
+                        HttpStatus.BAD_REQUEST,
+                        "secret-variable-filter",
+                        "'" + filter.name() + "' is secret-named — its value cannot be searched on (it would reveal"
+                                + " the value one guess at a time). Nothing was queried.");
+            }
+        }
+    }
+
     public SearchResponse search(SearchRequest request) {
         return aggregate(request, null, null);
     }
@@ -150,6 +171,7 @@ public class SearchService {
 
     /** Scope-filtered "Load more" (S2, R-SAFE-17): {@code readableEngineIds} null = unrestricted. */
     public DeepPage deepPage(SearchRequest request, String cursorToken, long nowMillis, Set<String> readableEngineIds) {
+        refuseSecretVariableFilters(request);
         BffFilters bff = BffFilters.of(request); // validates the failure window → 400 on bad ISO
         if (request.definitionVersion() != null && !notBlank(request.processDefinitionKey())) {
             throw new IllegalArgumentException("definitionVersion requires processDefinitionKey");
@@ -246,6 +268,7 @@ public class SearchService {
     }
 
     private SearchResponse aggregate(SearchRequest request, Integer exhaustCap, Set<String> readableEngineIds) {
+        refuseSecretVariableFilters(request);
         BffFilters bff = BffFilters.of(request); // validates the failure window → 400 on bad ISO
         if (request.definitionVersion() != null && !notBlank(request.processDefinitionKey())) {
             // A bare version number is meaningless across definitions — the version-drill

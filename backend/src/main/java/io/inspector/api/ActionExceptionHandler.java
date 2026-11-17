@@ -107,8 +107,12 @@ public class ActionExceptionHandler {
         problem.setProperty("code", "cas-conflict");
         problem.setProperty("outcome", "refused");
         problem.setProperty("auditId", e.auditId());
-        problem.setProperty("currentValue", e.currentValue());
-        problem.setProperty("expectedOldValue", e.expectedOldValue());
+        if (io.inspector.audit.SecretNames.isSecret(e.variableName())) {
+            problem.setProperty("masked", true); // #742: neither value of a secret-named variable
+        } else {
+            problem.setProperty("currentValue", e.currentValue());
+            problem.setProperty("expectedOldValue", e.expectedOldValue());
+        }
         return problem;
     }
 

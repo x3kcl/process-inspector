@@ -163,5 +163,6 @@ function toEntry(
     truncated: dto.truncated,
     sizeBytes: dto.sizeBytes,
     fullyLoaded,
+    masked: dto.masked,
   }
 }
