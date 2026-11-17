@@ -20,11 +20,13 @@ import io.inspector.audit.AuditEntry;
 import io.inspector.audit.AuditOutcome;
 import io.inspector.audit.AuditService;
 import io.inspector.audit.ProtectedInstanceRepository;
+import io.inspector.client.ChangeActivityStateRequest;
 import io.inspector.client.ExecutionRecords;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessInstanceRecords;
 import io.inspector.client.RepositoryRecords;
+import io.inspector.client.StartProcessInstanceRequest;
 import io.inspector.client.VariableRecords;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineEnvironment;
@@ -304,16 +306,17 @@ class FlowSurgeryServiceTest {
                         any(),
                         auditPayload.capture(),
                         any());
-        ArgumentCaptor<Map<String, Object>> wireBody = ArgumentCaptor.captor();
+        ArgumentCaptor<ChangeActivityStateRequest> wireBody = ArgumentCaptor.captor();
         order.verify(client).changeActivityState(any(), eq(CallPriority.INTERACTIVE), eq("pi-1"), wireBody.capture());
         order.verify(audit).close(eq(pendingEntry), eq(AuditOutcome.ok), eq(200), any(), eq(true));
 
         // The audit records the source/target activities AND the exact generated REST body.
         assertThat(wireBody.getValue())
+                .isEqualTo(new ChangeActivityStateRequest(List.of("stepOne"), List.of("stepTwo")));
+        assertThat((Map<String, Object>) auditPayload.getValue().get("restPayload"))
                 .containsExactly(
                         Map.entry("cancelActivityIds", List.of("stepOne")),
                         Map.entry("startActivityIds", List.of("stepTwo")));
-        assertThat(auditPayload.getValue()).containsEntry("restPayload", wireBody.getValue());
         assertThat(auditPayload.getValue().get("sourceActivities").toString()).contains("Step one");
         assertThat(auditPayload.getValue().get("targetActivities").toString()).contains("Step two");
         assertThat(result.outcome()).isEqualTo("ok");
@@ -386,13 +389,13 @@ class FlowSurgeryServiceTest {
         RestartInstanceResult result =
                 service.restartAsNew(DEV, "pi-dead", new RestartInstanceRequest(REASON, null, false), operator);
 
-        ArgumentCaptor<Map<String, Object>> startBody = ArgumentCaptor.captor();
+        ArgumentCaptor<StartProcessInstanceRequest> startBody = ArgumentCaptor.captor();
         verify(client).startProcessInstance(any(), any(), startBody.capture());
-        assertThat(startBody.getValue())
-                .containsEntry("processDefinitionKey", "demoOrder") // latest: by KEY, never a silent pin
-                .containsEntry("businessKey", "bk-9")
-                .containsEntry("variables", List.of(Map.of("name", "amount", "type", "integer", "value", 42)))
-                .doesNotContainKey("processDefinitionId");
+        assertThat(startBody.getValue()) // latest: by KEY, never a silent pin (no processDefinitionId)
+                .isEqualTo(StartProcessInstanceRequest.latest(
+                        "demoOrder",
+                        "bk-9",
+                        List.of(new StartProcessInstanceRequest.Variable("amount", "integer", 42))));
         assertThat(result.newProcessInstanceId()).isEqualTo("pi-new");
         assertThat(result.carriedVariables()).containsExactly("amount");
         assertThat(result.skippedVariables()).containsKeys("initiator", "blob"); // the honesty report
@@ -414,11 +417,10 @@ class FlowSurgeryServiceTest {
         RestartInstanceResult result =
                 service.restartAsNew(DEV, "pi-dead", new RestartInstanceRequest(REASON, null, true), operator);
 
-        ArgumentCaptor<Map<String, Object>> startBody = ArgumentCaptor.captor();
+        ArgumentCaptor<StartProcessInstanceRequest> startBody = ArgumentCaptor.captor();
         verify(client).startProcessInstance(any(), any(), startBody.capture());
-        assertThat(startBody.getValue())
-                .containsEntry("processDefinitionId", "demoOrder:3:v3")
-                .doesNotContainKey("processDefinitionKey");
+        assertThat(startBody.getValue().processDefinitionId()).isEqualTo("demoOrder:3:v3");
+        assertThat(startBody.getValue().processDefinitionKey()).isNull();
         assertThat(result.deltaStatement()).contains("PINNED");
     }
 

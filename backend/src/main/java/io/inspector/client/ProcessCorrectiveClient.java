@@ -130,7 +130,7 @@ final class ProcessCorrectiveClient {
                         .put()
                         .uri("/runtime/process-instances/{id}", processInstanceId)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .body(Map.of("action", action))
+                        .body(new ProcessInstanceActionRequest(action))
                         .retrieve()
                         .toBodilessEntity());
     }

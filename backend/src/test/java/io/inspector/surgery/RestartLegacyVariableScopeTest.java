@@ -30,6 +30,7 @@ import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessInstanceRecords;
 import io.inspector.client.RecentEngineErrors;
 import io.inspector.client.RepositoryRecords;
+import io.inspector.client.StartProcessInstanceRequest;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineEnvironment;
 import io.inspector.config.InspectorProperties.EngineMode;
@@ -176,10 +177,10 @@ class RestartLegacyVariableScopeTest {
                 new TestingAuthenticationToken("op", "n/a", "ROLE_OPERATOR"));
 
         // Then: locVar (execution-local) is neither carried nor reported as skipped instance state
-        ArgumentCaptor<Map<String, Object>> startBody = ArgumentCaptor.captor();
+        ArgumentCaptor<StartProcessInstanceRequest> startBody = ArgumentCaptor.captor();
         verify(client).startProcessInstance(any(), any(), startBody.capture());
-        assertThat(startBody.getValue())
-                .containsEntry("variables", List.of(Map.of("name", "procVar", "type", "string", "value", "p")));
+        assertThat(startBody.getValue().variables())
+                .containsExactly(new StartProcessInstanceRequest.Variable("procVar", "string", "p"));
         assertThat(result.carriedVariables()).containsExactly("procVar");
         assertThat(result.skippedVariables()).doesNotContainKey("locVar");
     }

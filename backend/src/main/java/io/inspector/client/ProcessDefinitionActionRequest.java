@@ -1,11 +1,17 @@
 package io.inspector.client;
 
-/** The body of PUT /repository/process-definitions/{id}. RED stub (#720): carries nothing yet. */
+import com.fasterxml.jackson.annotation.JsonInclude;
+import java.util.Objects;
+
+/**
+ * The body of PUT /repository/process-definitions/{id} — {@code suspend} or {@code activate},
+ * optionally cascading to the definition's instances (#720). {@code date} is OMITTED when null:
+ * only a scheduled suspend / activate carries it (#483 S6).
+ */
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public record ProcessDefinitionActionRequest(String action, boolean includeProcessInstances, String date) {
 
     public ProcessDefinitionActionRequest {
-        action = null;
-        includeProcessInstances = false;
-        date = null;
+        Objects.requireNonNull(action, "action");
     }
 }

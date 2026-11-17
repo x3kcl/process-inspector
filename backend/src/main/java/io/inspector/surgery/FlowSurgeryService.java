@@ -11,6 +11,7 @@ import io.inspector.audit.AuditEntry;
 import io.inspector.audit.AuditOutcome;
 import io.inspector.audit.AuditService;
 import io.inspector.audit.ProtectionGuard;
+import io.inspector.client.ChangeActivityStateRequest;
 import io.inspector.client.ExecutionPage;
 import io.inspector.client.ExecutionRecord;
 import io.inspector.client.ForwardedActor;
@@ -20,6 +21,7 @@ import io.inspector.client.HistoricVariableRecord;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessDefinitionPage;
 import io.inspector.client.ProcessInstanceRecord;
+import io.inspector.client.StartProcessInstanceRequest;
 import io.inspector.client.VariableRecord;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.config.InspectorProperties.EngineEnvironment;
@@ -150,7 +152,7 @@ public class FlowSurgeryService {
                 engine.auditPayloadOrDefault());
 
         dispatchAudited(entry, engineId, () -> {
-            client.changeActivityState(engine, CallPriority.INTERACTIVE, instanceId, plan.restBody());
+            client.changeActivityState(engine, CallPriority.INTERACTIVE, instanceId, plan.request());
             return null;
         });
 
@@ -322,6 +324,12 @@ public class FlowSurgeryService {
             List<BpmnStructure.FlowNode> targetNodes,
             List<ChangeStatePreview.Warning> warnings) {
 
+        /** The typed body the engine receives — the same two id lists as {@link #restBody()}. */
+        ChangeActivityStateRequest request() {
+            return new ChangeActivityStateRequest(ids(sourceNodes), ids(targetNodes));
+        }
+
+        /** The same body as a map, for the preview DTO and the audit payload. */
         Map<String, Object> restBody() {
             Map<String, Object> body = new LinkedHashMap<>();
             body.put("cancelActivityIds", ids(sourceNodes));
@@ -435,7 +443,9 @@ public class FlowSurgeryService {
         String ticketId = ticketPolicy.validate(request.ticketId(), engine.environment());
         boolean pinVersion = Boolean.TRUE.equals(request.pinDefinitionVersion());
 
-        Map<String, Object> startBody;
+        StartProcessInstanceRequest startBody;
+        String businessKey;
+        List<StartProcessInstanceRequest.Variable> variables;
         List<String> carried;
         Map<String, String> skipped;
         String startDefinitionRef;
@@ -444,23 +454,16 @@ public class FlowSurgeryService {
             startDefinitionRef = resolveStartDefinition(engine, originalDefinitionId, historic, pinVersion);
 
             Map<String, String> skippedReasons = new LinkedHashMap<>();
-            List<Map<String, Object>> variables = portableHistoricVariables(engine, instanceId, skippedReasons);
+            variables = portableHistoricVariables(engine, instanceId, skippedReasons);
             skipped = skippedReasons;
-            carried = variables.stream().map(v -> String.valueOf(v.get("name"))).toList();
+            carried = variables.stream()
+                    .map(StartProcessInstanceRequest.Variable::name)
+                    .toList();
 
-            startBody = new LinkedHashMap<>();
-            if (pinVersion) {
-                startBody.put("processDefinitionId", startDefinitionRef);
-            } else {
-                startBody.put("processDefinitionKey", startDefinitionRef);
-            }
-            Object businessKey = historic.businessKey();
-            if (businessKey != null) {
-                startBody.put("businessKey", String.valueOf(businessKey));
-            }
-            if (!variables.isEmpty()) {
-                startBody.put("variables", variables);
-            }
+            businessKey = historic.businessKey() == null ? null : String.valueOf(historic.businessKey());
+            startBody = pinVersion
+                    ? StartProcessInstanceRequest.pinned(startDefinitionRef, businessKey, variables)
+                    : StartProcessInstanceRequest.latest(startDefinitionRef, businessKey, variables);
         } catch (CallNotPermittedException | BulkheadFullException | ResourceAccessException e) {
             throw engineUnreachablePreFlight(engine);
         }
@@ -470,8 +473,8 @@ public class FlowSurgeryService {
         payload.put("originalInstanceId", instanceId);
         payload.put("pinDefinitionVersion", pinVersion);
         payload.put(pinVersion ? "processDefinitionId" : "processDefinitionKey", startDefinitionRef);
-        payload.put("businessKey", startBody.get("businessKey"));
-        payload.put("carriedVariables", redactedVariableCopy(startBody));
+        payload.put("businessKey", businessKey);
+        payload.put("carriedVariables", redactedVariableCopy(variables));
         payload.put("skippedVariables", skipped);
 
         AuditEntry entry = audit.beginPending(
@@ -549,7 +552,7 @@ public class FlowSurgeryService {
      * REST payload. Everything intentionally dropped lands in {@code skipped} with its
      * reason; a silent drop would masquerade as a faithful copy.
      */
-    private List<Map<String, Object>> portableHistoricVariables(
+    private List<StartProcessInstanceRequest.Variable> portableHistoricVariables(
             EngineConfig engine, String instanceId, Map<String, String> skipped) {
         // #718: filtered to the process-instance execution — 6.3 rows carry no scope to tell locals apart
         HistoricVariablePage page = client.listProcessScopeHistoricVariables(
@@ -563,7 +566,7 @@ public class FlowSurgeryService {
                             + VARIABLE_FETCH_CAP + "-variable restart cap. A partial copy would be a lie;"
                             + " nothing happened.");
         }
-        List<Map<String, Object>> variables = new ArrayList<>();
+        List<StartProcessInstanceRequest.Variable> variables = new ArrayList<>();
         for (HistoricVariableRecord row : rows) {
             if (row.taskId() != null) {
                 continue; // task-local — never instance state
@@ -586,30 +589,21 @@ public class FlowSurgeryService {
                 skipped.put(name, "type '" + type + "' does not round-trip over REST (no value in the wire form)");
                 continue;
             }
-            Map<String, Object> typed = new LinkedHashMap<>();
-            typed.put("name", name);
-            typed.put("type", type);
-            typed.put("value", variable.value());
-            variables.add(typed);
+            variables.add(new StartProcessInstanceRequest.Variable(name, type, variable.value()));
         }
         return variables;
     }
 
     /** Audit copy of the carried variables — secret-NAMED values redacted (R-AUD-03). */
-    @SuppressWarnings("unchecked")
-    private static List<Map<String, Object>> redactedVariableCopy(Map<String, Object> startBody) {
-        Object variables = startBody.get("variables");
-        if (!(variables instanceof List<?> list)) {
-            return List.of();
-        }
+    private static List<Map<String, Object>> redactedVariableCopy(
+            List<StartProcessInstanceRequest.Variable> variables) {
         List<Map<String, Object>> copy = new ArrayList<>();
-        for (Object item : list) {
-            Map<String, Object> variable = (Map<String, Object>) item;
+        for (StartProcessInstanceRequest.Variable variable : variables) {
             Map<String, Object> clean = new LinkedHashMap<>();
-            String name = String.valueOf(variable.get("name"));
+            String name = variable.name();
             clean.put("name", name);
-            clean.put("type", variable.get("type"));
-            clean.put("value", AuditService.isSecretName(name) ? AuditService.REDACTED : variable.get("value"));
+            clean.put("type", variable.type());
+            clean.put("value", AuditService.isSecretName(name) ? AuditService.REDACTED : variable.value());
             copy.add(clean);
         }
         return copy;
