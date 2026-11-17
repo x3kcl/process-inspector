@@ -326,11 +326,6 @@ public class ResolveService {
         }
     }
 
-    private static String str(Map<String, Object> map, String key) {
-        Object v = map.get(key);
-        return v != null ? v.toString() : null;
-    }
-
     @PreDestroy
     void shutdown() {
         fanout.shutdownNow();
