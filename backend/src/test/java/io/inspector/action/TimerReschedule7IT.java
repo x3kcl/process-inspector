@@ -106,6 +106,9 @@ class TimerReschedule7IT {
 
         assertThat(response.getStatusCode()).as(response.getBody()).isEqualTo(HttpStatus.OK);
         assertThat(mapper.readTree(response.getBody()).path("outcome").asText()).isEqualTo("ok");
+        // #744: the message names the replacement job, not the dead one.
+        assertThat(mapper.readTree(response.getBody()).path("deltaStatement").asText())
+                .contains(String.valueOf(timerJob(seven, instanceId).get("id")));
 
         // The instance's timer job now carries the requested instant (15s out: not fired yet).
         // Flowable 7.1 reschedules by replacing the job, so the job id is a new one.
@@ -113,6 +116,8 @@ class TimerReschedule7IT {
         assertThat(String.valueOf(moved.get("id"))).isNotEqualTo(jobId);
         assertThat(instant(moved.get("dueDate"))).isEqualTo(newDue);
         assertThat(timerJobById(seven, jobId)).isFalse();
+        assertThat(mapper.readTree(response.getBody()).path("newJobId").asText())
+                .isEqualTo(String.valueOf(moved.get("id")));
 
         // …then the instance moves past the timer and ends (timer acquisition runs every ~10s).
         await().atMost(60, TimeUnit.SECONDS)

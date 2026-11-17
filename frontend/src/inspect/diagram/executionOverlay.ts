@@ -82,7 +82,8 @@ export function executionOverlay(
 
   // Only completed nodes can be slowest: armed-not-taken catch events last as long as the winner.
   let slowestId: string | undefined
-  if (durations.size >= 2) {
+  // routeUnknown (#744): the losing catch events look completed, so no node can honestly be slowest.
+  if (durations.size >= 2 && !routeUnknown) {
     for (const id of completed) {
       const ms = durations.get(id)
       if (ms !== undefined && (slowestId === undefined || ms > (durations.get(slowestId) ?? 0)))

@@ -3,6 +3,7 @@ package io.inspector.action;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
@@ -961,5 +962,92 @@ class CorrectiveActionServiceTest {
                 .isInstanceOf(GuardRefusedException.class)
                 .satisfies(e -> assertThat(((GuardRefusedException) e).code()).isEqualTo("starter-link"));
         verify(client, never()).deleteInstanceIdentityLink(any(), any(), anyString(), anyString(), anyString());
+    }
+
+    /* ---------------- #744: Flowable 7.1 replaces the timer job on reschedule ---------------- */
+
+    private static final String DUE = "2099-01-01T00:00:00Z";
+
+    private void timerRescheduleSetup(List<Map<String, Object>> after) {
+        registry.updateHealth(
+                DEV,
+                new EngineHealth(
+                        true,
+                        "7.1.0",
+                        null,
+                        0,
+                        new EngineCapabilities(false, false, false, false, false, true),
+                        null,
+                        null,
+                        null));
+        when(client.getJob(any(), eq(CallPriority.INTERACTIVE), eq(JobLaneKind.TIMER), eq("j1")))
+                .thenReturn(JobRecords.job(Map.of(
+                        "id",
+                        "j1",
+                        "processInstanceId",
+                        "pi-1",
+                        "elementId",
+                        "wait",
+                        "dueDate",
+                        "2098-01-01T00:00:00Z")));
+        when(client.listJobs(any(), eq(CallPriority.INTERACTIVE), eq(JobLaneKind.TIMER), any(), anyInt(), anyInt()))
+                .thenReturn(JobRecords.page(after));
+    }
+
+    private static ActionRequest rescheduleRequest() {
+        return new ActionRequest(
+                "timer rescheduled for test",
+                null,
+                null,
+                "j1",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                DUE,
+                null,
+                null,
+                null,
+                null,
+                null);
+    }
+
+    @Test
+    void rescheduleNamesTheReplacementTimerJobInTheMessageAndTheAuditClose() {
+        timerRescheduleSetup(
+                List.of(Map.of("id", "j2", "processInstanceId", "pi-1", "elementId", "wait", "dueDate", DUE)));
+
+        ActionResult result = service.execute(DEV, "pi-1", ActionVerb.RESCHEDULE_TIMER, rescheduleRequest(), operator);
+
+        assertThat(result.deltaStatement()).contains("j2").doesNotContain("Timer job j1 now waits");
+        verify(audit).close(eq(pendingEntry), eq(AuditOutcome.ok), eq(200), eq("newJobId=j2"), eq(true));
+    }
+
+    @Test
+    void rescheduleSaysTheJobIdChangedWhenTheReplacementCannotBeResolved() {
+        timerRescheduleSetup(List.of());
+
+        ActionResult result = service.execute(DEV, "pi-1", ActionVerb.RESCHEDULE_TIMER, rescheduleRequest(), operator);
+
+        assertThat(result.deltaStatement()).contains("job id changed").doesNotContain("Reschedule again to undo");
+        verify(audit).close(eq(pendingEntry), eq(AuditOutcome.ok), eq(200), eq(null), eq(true));
+    }
+
+    @Test
+    void rescheduleNamesTheReplacementTimerJobInTheResponseDto() {
+        timerRescheduleSetup(
+                List.of(Map.of("id", "j2", "processInstanceId", "pi-1", "elementId", "wait", "dueDate", DUE)));
+
+        ActionResult result = service.execute(DEV, "pi-1", ActionVerb.RESCHEDULE_TIMER, rescheduleRequest(), operator);
+
+        // Via JSON: the wire shape is the contract the SPA reads (#744 — "in the response DTO").
+        assertThat(new com.fasterxml.jackson.databind.ObjectMapper()
+                        .valueToTree(result)
+                        .path("newJobId")
+                        .asText())
+                .isEqualTo("j2");
     }
 }
