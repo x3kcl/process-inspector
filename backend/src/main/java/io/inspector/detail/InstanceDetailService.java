@@ -387,21 +387,20 @@ public class InstanceDetailService {
                 handler != null ? handler : job.handlerType());
     }
 
-    static ExternalWorkerJobDto externalWorkerRow(Map<String, Object> job) {
-        Object retries = job.get("retries");
+    static ExternalWorkerJobDto externalWorkerRow(JobRecord job) {
         return new ExternalWorkerJobDto(
-                str(job, "id"),
-                str(job, "elementId"),
-                str(job, "elementName"),
-                str(job, "lockOwner"),
-                str(job, "lockExpirationTime"),
-                retries instanceof Number n ? n.intValue() : null,
-                str(job, "exceptionMessage"),
-                str(job, "createTime"),
-                str(job, "dueDate"),
-                str(job, "executionId"),
-                str(job, "processDefinitionId"),
-                str(job, "tenantId"));
+                job.id(),
+                job.elementId(),
+                job.elementName(),
+                job.lockOwner(),
+                job.lockExpirationTime(),
+                job.retries(),
+                job.exceptionMessage(),
+                job.createTime(),
+                job.dueDate(),
+                job.executionId(),
+                job.processDefinitionId(),
+                job.tenantId());
     }
 
     /**

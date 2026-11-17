@@ -1,6 +1,7 @@
 package io.inspector.api;
 
 import io.inspector.client.GuardedCaller.CallPriority;
+import io.inspector.client.IdentityLinkRecord;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.TaskPage;
 import io.inspector.client.TaskRecord;
@@ -89,18 +90,12 @@ public class TaskBrowseController {
     public List<IdentityLinkRow> identityLinks(@PathVariable String engineId, @PathVariable String taskId) {
         EngineConfig engine = registry.require(engineId);
         List<IdentityLinkRow> rows = new ArrayList<>();
-        for (Map<String, Object> link : flowable.listIdentityLinks(engine, CallPriority.INTERACTIVE, taskId)) {
-            String user = str(link, "user");
-            String group = str(link, "group");
+        for (IdentityLinkRecord link : flowable.listIdentityLinks(engine, CallPriority.INTERACTIVE, taskId)) {
+            String user = link.user();
             rows.add(new IdentityLinkRow(
-                    user != null ? "users" : "groups", user != null ? user : group, str(link, "type")));
+                    user != null ? "users" : "groups", user != null ? user : link.group(), link.type()));
         }
         return rows;
-    }
-
-    private static String str(Map<String, Object> task, String key) {
-        Object value = task.get(key);
-        return value == null ? null : value.toString();
     }
 
     public record TaskBrowsePage(List<TaskRow> rows, List<String> cappedEngines) {}

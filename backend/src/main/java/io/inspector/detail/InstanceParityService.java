@@ -3,6 +3,7 @@ package io.inspector.detail;
 import io.inspector.client.DmnApiClient;
 import io.inspector.client.FlowablePage;
 import io.inspector.client.GuardedCaller.CallPriority;
+import io.inspector.client.IdentityLinkRecord;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessInstanceRecord;
 import io.inspector.config.InspectorProperties.EngineConfig;
@@ -40,16 +41,16 @@ public class InstanceParityService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown instance: " + instanceId);
         }
         boolean running = flowable.getRuntimeProcessInstance(engine, CallPriority.INTERACTIVE, instanceId) != null;
-        List<Map<String, Object>> raw = running
+        List<IdentityLinkRecord> raw = running
                 ? flowable.listRuntimeIdentityLinks(engine, CallPriority.INTERACTIVE, instanceId)
                 : flowable.listHistoricIdentityLinks(engine, CallPriority.INTERACTIVE, instanceId);
         List<ParticipantRow> rows = new ArrayList<>();
-        for (Map<String, Object> link : raw) {
-            String user = first(link, "user", "userId");
+        for (IdentityLinkRecord link : raw) {
+            String user = firstNonBlank(link.user(), link.userId());
             if (user == null) {
                 continue;
             }
-            String type = first(link, "type");
+            String type = firstNonBlank(link.type());
             rows.add(new ParticipantRow(user, type == null ? "participant" : type, !"starter".equals(type)));
         }
         String starter = historic.startUserId();
@@ -106,6 +107,15 @@ public class InstanceParityService {
     private static String first(Map<String, Object> row, String... keys) {
         for (String key : keys) {
             String value = str(row, key);
+            if (value != null && !value.isBlank()) {
+                return value;
+            }
+        }
+        return null;
+    }
+
+    private static String firstNonBlank(String... values) {
+        for (String value : values) {
             if (value != null && !value.isBlank()) {
                 return value;
             }

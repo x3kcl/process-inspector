@@ -289,38 +289,36 @@ final class ProcessInstanceReadClient {
     }
 
     /** GET /runtime/process-instances/{id}/identitylinks. Empty when the instance is not running. */
-    @SuppressWarnings("unchecked")
-    public List<Map<String, Object>> listRuntimeIdentityLinks(
+    public List<IdentityLinkRecord> listRuntimeIdentityLinks(
             EngineConfig engine, CallPriority priority, String processInstanceId) {
         try {
-            List<Map<String, Object>> rows = guarded.call(
+            IdentityLinkRecord[] rows = guarded.call(
                     engine,
                     priority,
                     () -> guarded.readClient(engine)
                             .get()
                             .uri("/runtime/process-instances/{id}/identitylinks", processInstanceId)
                             .retrieve()
-                            .body(List.class));
-            return rows == null ? List.of() : rows;
+                            .body(IdentityLinkRecord[].class));
+            return rows == null ? List.of() : List.of(rows);
         } catch (HttpClientErrorException.NotFound e) {
             return List.of();
         }
     }
 
     /** GET /history/historic-process-instances/{id}/identitylinks. Empty on 404. */
-    @SuppressWarnings("unchecked")
-    public List<Map<String, Object>> listHistoricIdentityLinks(
+    public List<IdentityLinkRecord> listHistoricIdentityLinks(
             EngineConfig engine, CallPriority priority, String processInstanceId) {
         try {
-            List<Map<String, Object>> rows = guarded.call(
+            IdentityLinkRecord[] rows = guarded.call(
                     engine,
                     priority,
                     () -> guarded.readClient(engine)
                             .get()
                             .uri("/history/historic-process-instances/{id}/identitylinks", processInstanceId)
                             .retrieve()
-                            .body(List.class));
-            return rows == null ? List.of() : rows;
+                            .body(IdentityLinkRecord[].class));
+            return rows == null ? List.of() : List.of(rows);
         } catch (HttpClientErrorException.NotFound e) {
             return List.of();
         }
