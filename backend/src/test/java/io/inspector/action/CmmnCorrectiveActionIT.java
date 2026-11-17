@@ -197,4 +197,98 @@ class CmmnCorrectiveActionIT {
             assertThat(row.path("payload").asText()).contains(jobId).contains("cmmn");
         });
     }
+
+    /* ------------------------------------------------------------------------------
+     * #718: the REAL 6.8 engine lists a null-valued case variable but 404s its single GET.
+     * edit-case-variable still edits it, and the compare-and-set still refuses when a
+     * concurrent writer changed the null between the operator's read and the edit.
+     * ------------------------------------------------------------------------------ */
+    private static final String NULL_VAR_CASE_KEY = "demoCaseDetail";
+    private final java.util.List<String> nullVarCases = new java.util.ArrayList<>();
+    private boolean nullVarCaseDeployedHere;
+
+    @AfterAll
+    void teardownNullVariableCases() {
+        if (cmmn != null) {
+            nullVarCases.forEach(id -> EngineSeed.deleteCaseQuietly(cmmn, id));
+            if (nullVarCaseDeployedHere) {
+                EngineSeed.deleteCmmnDeploymentsQuietly(cmmn, NULL_VAR_CASE_KEY);
+            }
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private String startCaseWithNullVariable() {
+        if (EngineSeed.caseDefinitionCount(cmmn, NULL_VAR_CASE_KEY) == 0) {
+            nullVarCaseDeployedHere = true;
+            EngineSeed.deployCmmnIfMissing(
+                    cmmn,
+                    NULL_VAR_CASE_KEY,
+                    java.nio.file.Path.of("..", "docker", "processes", "demo-case-detail.cmmn.xml"));
+        }
+        Map<String, Object> aNull = new java.util.HashMap<>();
+        aNull.put("name", "aNull");
+        aNull.put("value", null);
+        Map<String, Object> started = cmmn.post()
+                .uri("/cmmn-runtime/case-instances")
+                .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                .body(Map.of("caseDefinitionKey", NULL_VAR_CASE_KEY, "variables", java.util.List.of(aNull)))
+                .retrieve()
+                .body(Map.class);
+        String id = String.valueOf(started.get("id"));
+        nullVarCases.add(id);
+        return id;
+    }
+
+    private ResponseEntity<String> editNullVariable(String caseId) {
+        Map<String, Object> variable = new java.util.HashMap<>();
+        variable.put("name", "aNull");
+        variable.put("type", "string");
+        variable.put("value", "set");
+        variable.put("expectedOldValue", null);
+        return as("operator")
+                .postForEntity(
+                        "/api/cases/engine-a/" + caseId + "/actions/edit-case-variable",
+                        Map.of("variable", variable),
+                        String.class);
+    }
+
+    @SuppressWarnings("unchecked")
+    private Object nullVariableOnEngine(String caseId) {
+        return cmmn.get()
+                .uri("/cmmn-runtime/case-instances/{id}/variables/aNull", caseId)
+                .retrieve()
+                .body(Map.class)
+                .get("value");
+    }
+
+    @Test
+    void anOperatorEditsANullValuedCaseVariable() {
+        String caseId = startCaseWithNullVariable();
+
+        ResponseEntity<String> applied = editNullVariable(caseId);
+
+        assertThat(applied.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(nullVariableOnEngine(caseId)).isEqualTo("set");
+    }
+
+    @Test
+    void aConcurrentChangeOfANullValuedCaseVariableIsStillACasConflict() throws Exception {
+        String caseId = startCaseWithNullVariable();
+        // a concurrent writer changes the null after the operator read it
+        cmmn.put()
+                .uri("/cmmn-runtime/case-instances/{id}/variables/aNull", caseId)
+                .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                .body(Map.of("name", "aNull", "type", "string", "value", "other"))
+                .retrieve()
+                .toBodilessEntity();
+
+        ResponseEntity<String> conflict = editNullVariable(caseId);
+
+        assertThat(conflict.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        JsonNode problem = mapper.readTree(conflict.getBody());
+        assertThat(problem.path("code").asText()).isEqualTo("cas-conflict");
+        assertThat(problem.path("currentValue").asText()).isEqualTo("other");
+        assertThat(nullVariableOnEngine(caseId)).isEqualTo("other");
+    }
 }
