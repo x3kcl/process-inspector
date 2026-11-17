@@ -19,7 +19,7 @@ knows none of that.
 **Proposal:** a read-only MCP endpoint `/mcp` **inside the BFF**, Streamable HTTP, protected as
 an OAuth resource server that accepts **per-user, audience-bound tokens from the same IdP**.
 The agent acts as the signed-in user with that user's scope grants and is never more than
-read-only in v1. Ten tools wrap existing BFF services (§1). Every engine call runs on a new
+read-only in v1. Eleven tools wrap existing BFF services (§1). Every engine call runs on a new
 thin `AGENT` Resilience4j lane so an agent cannot starve operators (§3.4). Every tool call is
 audited metadata-only with the actor rendered `agent <client> on behalf of <user>` (§4). Engine
 text is returned as marked, sanitized, capped untrusted data (§5). Mutations stay out until a
@@ -140,7 +140,7 @@ only), `audit_log` (the operations log is personal data about employees, DATA-CL
 | RBAC + scope | Same `RbacAuthorizer`, `ReadScopeGate`, projectors, method security | Re-implemented or forwarded; the BFF must accept bearer tokens anyway |
 | Do-no-harm | Same `GuardedCaller`; the AGENT lane is one more bulkhead entry | A second process the BFF cannot throttle except at its HTTP edge |
 | Audit | Same `AuditService`, same chain | Needs a write path into the audit store, or a second log |
-| Isolation | MCP dependency inside the credential-vault process (OPERATIONS §7: the BFF is the most credentialed box) | Better dependency isolation |
+| Isolation | MCP dependency inside the credential-vault process (OPERATIONS preamble: "the single most credentialed box in the estate") | Better dependency isolation |
 | Ops | One deployable | Two deployables, two release trains |
 
 **Recommendation: in-BFF**, behind a kill switch `inspector.agent.enabled` (default `false`) and
@@ -161,7 +161,7 @@ defect in it cannot widen any other route.
   long-lived Inspector token in a config file. A client that only speaks stdio uses its own
   local HTTP bridge; that is client-side and out of our scope.
 - Validate `Origin`/`Host` on `/mcp` (DNS-rebinding defence; Spring AI exposes a header
-  validator), no CORS, TLS terminated at the existing proxy.
+  validator — S0 confirms which), no CORS, TLS terminated at the existing proxy.
 
 ### 3.3 Auth: the agent is the user, never a service
 
@@ -239,8 +239,13 @@ for exfiltration, "which variables left through which client".
   it breaks every filter that matches on the username. Decision D7.
 - Volume: bounded by the rate limit (≤ 30 rows/min/user); the existing monthly partitions and
   400-day retention apply. Erasure follows the skeleton-preserving rule.
-- The audit operations log (VIEWER, scope-filtered) shows agent reads; a filter chip "agent
-  activity" is a small UI slice.
+- The audit operations log (VIEWER, scope-filtered) shows agent reads of a single engine. Rows
+  on the `_inspector` sentinel (the fleet tools) are visible only to a fleet ADMIN once
+  `inspector.security.scope-reads-enforced=true` (R-SAFE-17, ARCH "config-event rows tighten
+  under enforcement"), so a scoped user does not see their own fleet-tool rows in the log or in
+  "my activity this shift" (R-AUD-05). Fix in S2: either record fleet-tool rows per touched
+  engine or let the actor read their own `agent-read:*` sentinel rows; the build picks one and
+  pins it with a RED. A filter chip "agent activity" is a small UI slice.
 
 ## 5. Threat model
 
@@ -301,15 +306,15 @@ Mitigations:
 | Engine `audit-payload` | Default agent exposure | Agent sees |
 |---|---|---|
 | `metadata-only` | `none` | the tool refuses: "variables not exposed to agents on this engine" |
-| `redacted` (the prod default) | `names` | name, type, scope, size; no values |
-| `full` | `values` | values with the denylist applied, each clipped to 1 KiB (the SPA's preview is 8 KiB) |
+| `redacted` (the registry default, `auditPayloadOrDefault()`) | `names` | name, type, scope, size; no values |
+| `full` | `values` | values with the denylist applied, each clipped to 1 KiB (SPEC §2 sets the SPA's variable preview at 8 KiB) |
 
 A per-engine override `agent-variables: none | names | values` in the registry can only
 **narrow** the default unless a fleet `REGISTRY_ADMIN` widens it (audited registry write).
 
 ### 5.4 Confused deputy
 
-The BFF holds admin-equivalent credentials to every engine (OPERATIONS §7). The deputy risk is
+The BFF holds admin-equivalent credentials to every engine (OPERATIONS preamble and §7). The deputy risk is
 that the MCP path lets a caller borrow those credentials beyond their own grants.
 
 - Authorization is always evaluated against the **token's user**, never the BFF's engine
