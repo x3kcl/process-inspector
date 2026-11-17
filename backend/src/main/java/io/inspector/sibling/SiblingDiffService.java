@@ -226,10 +226,9 @@ public class SiblingDiffService {
         for (HistoricVariableRecord row : flowable.listHistoricVariableInstances(
                         engine, CallPriority.INTERACTIVE, instanceId, engine.maxPageSizeOrDefault())
                 .dataOrEmpty()) {
-            // The envelope is nested under "variable" (6.8 and 7.1 alike) — same as the detail
-            // ledger's historic leg.
-            if (row.variable() == null) continue;
-            rows.add(InstanceDetailService.typedRow(row.variable(), "global", row.executionId(), row.taskId()));
+            // Nested under "variable" on every recorded engine; a flat row is read from the row
+            // itself — same as the detail ledger's historic leg.
+            rows.add(InstanceDetailService.typedRow(row.envelope(), "global", row.executionId(), row.taskId()));
         }
         return rows;
     }

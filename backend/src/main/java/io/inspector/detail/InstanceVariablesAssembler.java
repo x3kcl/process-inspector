@@ -105,8 +105,7 @@ final class InstanceVariablesAssembler {
                 .listHistoricVariableInstances(
                         engine, CallPriority.INTERACTIVE, instanceId, engine.maxPageSizeOrDefault())
                 .dataOrEmpty()) {
-            if (row.variable() == null) continue; // every recorded engine nests the envelope
-            rows.add(InstanceDetailService.typedRow(row.variable(), "global", row.executionId(), row.taskId()));
+            rows.add(InstanceDetailService.typedRow(row.envelope(), "global", row.executionId(), row.taskId()));
         }
         rows.sort(Comparator.comparing(VariableDto::name, Comparator.nullsLast(Comparator.naturalOrder())));
         return new InstanceVariables("HISTORIC", rows, List.of());
