@@ -369,7 +369,7 @@ class FlowSurgeryServiceTest {
         when(client.listProcessDefinitionsByKey(
                         any(), eq(CallPriority.INTERACTIVE), eq("demoOrder"), any(), anyInt(), eq(1)))
                 .thenReturn(RepositoryRecords.definitionPage(List.of(Map.of("id", "demoOrder:4:v4"))));
-        when(client.listHistoricVariableInstances(any(), eq(CallPriority.INTERACTIVE), eq("pi-dead"), anyInt()))
+        when(client.listProcessScopeHistoricVariables(any(), eq(CallPriority.INTERACTIVE), eq("pi-dead"), anyInt()))
                 .thenReturn(VariableRecords.historicPage(
                         List.of(
                                 variableRow("amount", "integer", 42, "global", null),
@@ -405,7 +405,7 @@ class FlowSurgeryServiceTest {
         stubDeadInstance("pi-dead", "demoOrder:3:v3");
         when(client.getProcessDefinition(any(), eq(CallPriority.INTERACTIVE), eq("demoOrder:3:v3")))
                 .thenReturn(RepositoryRecords.definition(Map.of("id", "demoOrder:3:v3")));
-        when(client.listHistoricVariableInstances(any(), eq(CallPriority.INTERACTIVE), eq("pi-dead"), anyInt()))
+        when(client.listProcessScopeHistoricVariables(any(), eq(CallPriority.INTERACTIVE), eq("pi-dead"), anyInt()))
                 .thenReturn(VariableRecords.historicPage(List.of(), 0, 500));
         when(client.startProcessInstance(any(), any(), any()))
                 .thenReturn(ProcessInstanceRecords.instance(

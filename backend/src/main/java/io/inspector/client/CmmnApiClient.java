@@ -319,7 +319,11 @@ public class CmmnApiClient {
                             .retrieve()
                             .body(VariableRecord.class));
         } catch (HttpClientErrorException.NotFound e) {
-            return null;
+            // #718: 6.8/7.1 404 the single GET of a NULL-valued case variable the list still shows.
+            return listCaseVariables(engine, priority, caseInstanceId).stream()
+                    .filter(row -> name.equals(row.name()))
+                    .findFirst()
+                    .orElse(null);
         }
     }
 

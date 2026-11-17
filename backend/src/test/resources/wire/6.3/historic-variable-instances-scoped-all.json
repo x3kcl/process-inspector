@@ -1,0 +1,33 @@
+{
+  "data": [
+    {
+      "id": "4aacf6ed-e256-11f1-94cc-2a5887c4fb7a",
+      "processInstanceId": "4a868325-e256-11f1-94cc-2a5887c4fb7a",
+      "processInstanceUrl": "http://localhost:8080/flowable-rest/service/history/historic-process-instances/4a868325-e256-11f1-94cc-2a5887c4fb7a",
+      "taskId": null,
+      "variable": {
+        "name": "locVar",
+        "scope": null,
+        "type": "string",
+        "value": "l"
+      }
+    },
+    {
+      "id": "4a86f857-e256-11f1-94cc-2a5887c4fb7a",
+      "processInstanceId": "4a868325-e256-11f1-94cc-2a5887c4fb7a",
+      "processInstanceUrl": "http://localhost:8080/flowable-rest/service/history/historic-process-instances/4a868325-e256-11f1-94cc-2a5887c4fb7a",
+      "taskId": null,
+      "variable": {
+        "name": "procVar",
+        "scope": null,
+        "type": "string",
+        "value": "p"
+      }
+    }
+  ],
+  "order": "asc",
+  "size": 2,
+  "sort": "variableName",
+  "start": 0,
+  "total": 2
+}
