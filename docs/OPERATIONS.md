@@ -263,6 +263,11 @@ annotated tag, and *calls* `release.yml` as a reusable workflow — required bec
   each 2-64 chars of letters, digits, `_`, `-`, a letter or digit at both ends; matched as a whole word or camelCase / snake_case
   segment, e.g. `iban` hits `customerIban`, not `ibanx`). Built-ins cannot be removed; a bad
   entry fails startup naming the property.
+- **Audited reveal** (R-AUD-12, #743): `inspector.reveal.max-per-minute` (default 10, 1–1000,
+  validated at startup) caps reveals per user per 60-second window; past it the user gets 429
+  `reveal-rate-limited` and ONE `reveal-variable` row with outcome `failed`/429 per window.
+  Reveals are audit rows `reveal-variable` (name, never the value); filter the Ops log by that
+  action to review who saw which secret. The window is in memory (a restart resets it).
 - DB role: INSERT/SELECT only (REVOKE UPDATE/DELETE) + guard trigger; per-row hash chain,
   **walked and recomputed by a verifier** (`GET /api/admin/audit/integrity`, ADMIN-only,
   itself an audited read — `AuditChainVerifier`, issue #304): it recomputes each row's hash

@@ -1384,8 +1384,35 @@ tree rows stay distinguishable (R-UXQ-12 half, usability W2 #7).
   value would be an oracle. Preview, outcome message, 409 (`masked: true`, neither value) and
   audit row show neither the old nor the new value; a BFF restart invalidates tokens (the edit
   then 409s and the operator re-opens the editor). **Known limit:** name-based and top-level
-  only — a json variable `config` holding a `password` key is **not** masked. Revealing a
-  masked value is not offered (tracked separately).
+  only — a json variable `config` holding a `password` key is **not** masked. One masked
+  value can be revealed, audited, per R-AUD-12.
+- **Audited reveal of one secret-named value** (R-AUD-12, #743): `POST …/variables/{name}/reveal`
+  (instance, `?executionId=` for step-local, and the case twin) returns ONE secret-named
+  variable's unmasked value, `Cache-Control: no-store`, never a GET. Rules:
+  - **Tier:** OPERATOR and above on that engine; VIEWER and RESPONDER get the verbs'
+    `rbac-denied` 403. Under `scope-reads-enforced` an out-of-scope engine is refused (403).
+  - **Only masked values:** a name that is not secret-named ⇒ 400 `variable-not-secret` (its
+    value is already shown); an unknown variable ⇒ the read's 404. Running instances only (the
+    single-value read is runtime-scoped).
+  - **Audit, fail-closed:** every reveal is an audit row `reveal-variable` — actor, time,
+    engine, instance (or case), payload `name`/`scope`/`executionId`/`scopeType`, reason,
+    outcome — and **never the value** (not in the row, the outcome message, the logs or an
+    error body). The row is written (PENDING) before the engine read and closed `ok` before the
+    value is returned: no row ⇒ 503 `audit-unavailable`, a failed close ⇒ 500, no value either
+    way. Refused attempts after the door (tier, scope, not-secret, reason, not found) close the
+    row `failed` with their status; a caller with no role on the engine at all is refused at the
+    door like every read. It shows in the Ops log and the instance's audit trail.
+  - **Reason:** optional free text; **required (≥ 10 characters) on a `prod` engine** — the
+    tier-1 reason ladder of §6 (`reason-required` / `reason-too-short`).
+  - **Rate limit:** `inspector.reveal.max-per-minute` reveals per user per 60-second window
+    (default 10, 1–1000); past it ⇒ 429 `reveal-rate-limited`, no value; the breach is audited
+    once per window (`failed`, 429), not per refused call.
+  - **Not retried, not bulk, not elsewhere:** one engine read, never retried; no bulk reveal;
+    the raw-JSON export, Compare, search and the agent surface (AGENTIC-ACCESS) never reveal.
+  - **SPA:** a real "Reveal" button (accessible name *Reveal <name>*) beside the hidden value,
+    disabled with the visible reason for tiers that may not; on prod a small dialog asks for the
+    reason. The value lives in that component's state only — not the query cache — and is gone
+    on hide, unmount or navigation; a copy button sits beside it.
 - Surfaced four ways: **per-instance tab** (what did the last shift try), **global
   operations log** page (filterable by actor/action/engine/ticketId/time, with a streaming
   **CSV export** over the same filters — R-AUD-08; formula-escaped per R-OPS-08, skeleton

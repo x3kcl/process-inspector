@@ -216,6 +216,12 @@ tab-aware (`?tab=timeline`) — paste the link into a ticket.
     verification modal shows neither value — the conflict check runs server-side on an opaque
     token. Only the variable's own name counts: a `password` key inside a JSON variable is not
     hidden.
+    **Reveal** (OPERATOR and above): the button beside a hidden value shows that one value,
+    with a copy button, until you hide it or leave the page. Every reveal is in the audit log
+    under your name (the variable's name, never its value). On a prod engine you are asked for
+    a reason first (at least 10 characters). Viewers and responders see the button disabled
+    with the reason. There is a per-user limit (default 10 reveals a minute). Nothing reveals
+    in bulk, in Compare, in search or in the raw-JSON export.
   - **Errors & Jobs** — the four job lanes kept distinct (the lane is the diagnosis), plus
     the read-only **external-worker lane** on Flowable 6.8+ (lock owner / expiration).
     Per-job: retries, exception (stacktrace on expand), and the verbs — inline "Retry job
