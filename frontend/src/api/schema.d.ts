@@ -805,6 +805,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/cases/{engineId}/{caseInstanceId}/variables/{name}/reveal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["revealCaseVariable"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/definitions": {
         parameters: {
             query?: never;
@@ -1567,6 +1583,22 @@ export interface paths {
         get: operations["variable"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/instances/{engineId}/{instanceId}/variables/{name}/reveal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["revealInstanceVariable"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3782,6 +3814,18 @@ export interface components {
                 [key: string]: string;
             };
         };
+        RevealRequest: {
+            reason?: string;
+        };
+        RevealedVariable: {
+            /** Format: uuid */
+            auditId?: string;
+            executionId?: string;
+            name?: string;
+            scope?: string;
+            type?: string;
+            value?: unknown;
+        };
         SaveViewRequest: {
             name: string;
             search: string;
@@ -5424,6 +5468,34 @@ export interface operations {
             };
         };
     };
+    revealCaseVariable: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engineId: string;
+                caseInstanceId: string;
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["RevealRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["RevealedVariable"];
+                };
+            };
+        };
+    };
     definitions: {
         parameters: {
             query?: {
@@ -6615,6 +6687,36 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["VariableDto"];
+                };
+            };
+        };
+    };
+    revealInstanceVariable: {
+        parameters: {
+            query?: {
+                executionId?: string;
+            };
+            header?: never;
+            path: {
+                engineId: string;
+                instanceId: string;
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["RevealRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["RevealedVariable"];
                 };
             };
         };
