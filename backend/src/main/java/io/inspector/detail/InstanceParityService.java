@@ -1,5 +1,6 @@
 package io.inspector.detail;
 
+import io.inspector.audit.SecretNames;
 import io.inspector.client.DecisionExecutionPage;
 import io.inspector.client.DecisionExecutionRecord;
 import io.inspector.client.DmnApiClient;
@@ -99,7 +100,43 @@ public class InstanceParityService {
     public Map<String, Object> decisionAudit(String engineId, String decisionExecutionId) {
         EngineConfig engine = registry.require(engineId);
         Map<String, Object> audit = dmn.auditData(engine, CallPriority.INTERACTIVE, decisionExecutionId);
-        return audit == null ? Map.of() : new LinkedHashMap<>(audit);
+        return audit == null ? Map.of() : maskSecretNamed(audit);
+    }
+
+    /**
+     * #742 (R-AUD-11): the engine's audit carries every process variable the decision saw
+     * ({@code inputVariables}) and its outputs ({@code decisionResult}). A secret-named entry is
+     * dropped from both and its name listed under {@code maskedVariables}; types stay.
+     */
+    static Map<String, Object> maskSecretNamed(Map<String, Object> audit) {
+        Map<String, Object> out = new LinkedHashMap<>(audit);
+        java.util.Set<String> masked = new java.util.TreeSet<>();
+        if (out.get("inputVariables") instanceof Map<?, ?> inputs) {
+            out.put("inputVariables", withoutSecrets(inputs, masked));
+        }
+        if (out.get("decisionResult") instanceof List<?> rows) {
+            out.put(
+                    "decisionResult",
+                    rows.stream()
+                            .map(row -> row instanceof Map<?, ?> m ? withoutSecrets(m, masked) : row)
+                            .toList());
+        }
+        if (!masked.isEmpty()) {
+            out.put("maskedVariables", List.copyOf(masked));
+        }
+        return out;
+    }
+
+    private static Map<Object, Object> withoutSecrets(Map<?, ?> source, java.util.Set<String> masked) {
+        Map<Object, Object> kept = new LinkedHashMap<>();
+        source.forEach((k, v) -> {
+            if (k instanceof String name && SecretNames.isSecret(name)) {
+                masked.add(name);
+            } else {
+                kept.put(k, v);
+            }
+        });
+        return kept;
     }
 
     private static String firstNonBlank(String... values) {
