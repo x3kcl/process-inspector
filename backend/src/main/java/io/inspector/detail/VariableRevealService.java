@@ -9,9 +9,7 @@ import io.inspector.audit.AuditService;
 import io.inspector.audit.BreakGlassActor;
 import io.inspector.audit.SecretNames;
 import io.inspector.client.CmmnApiClient;
-import io.inspector.client.ExecutionRecord;
 import io.inspector.client.GuardedCaller.CallPriority;
-import io.inspector.client.ProcessApiClient;
 import io.inspector.client.VariableRecord;
 import io.inspector.cmmn.CmmnCapabilities;
 import io.inspector.config.InspectorProperties.EngineConfig;
@@ -58,7 +56,6 @@ public class VariableRevealService {
     private final EngineRegistry registry;
     private final InstanceDetailService detail;
     private final CmmnApiClient cmmn;
-    private final ProcessApiClient flowable;
     private final AuditService audit;
     private final RbacAuthorizer rbac;
     private final ReadScopeGate readScope;
@@ -70,7 +67,6 @@ public class VariableRevealService {
             EngineRegistry registry,
             InstanceDetailService detail,
             CmmnApiClient cmmn,
-            ProcessApiClient flowable,
             AuditService audit,
             RbacAuthorizer rbac,
             ReadScopeGate readScope,
@@ -79,7 +75,6 @@ public class VariableRevealService {
         this.registry = registry;
         this.detail = detail;
         this.cmmn = cmmn;
-        this.flowable = flowable;
         this.audit = audit;
         this.rbac = rbac;
         this.readScope = readScope;
@@ -190,18 +185,7 @@ public class VariableRevealService {
     private VariableRecord read(
             ActionScope scope, EngineConfig engine, String targetId, String name, String executionId) {
         if (scope == ActionScope.BPMN) {
-            if (executionId != null && !executionId.isBlank()) {
-                // The step-local edit's check: an execution of ANOTHER instance would reveal its value
-                // under this instance's audit row. A gone execution falls through to the read's 404.
-                ExecutionRecord execution = flowable.getExecution(engine, CallPriority.INTERACTIVE, executionId);
-                String owner = execution == null ? null : execution.processInstanceId();
-                if (owner != null && !owner.equals(targetId)) {
-                    throw new GuardRefusedException(
-                            HttpStatus.BAD_REQUEST,
-                            "execution-instance-mismatch",
-                            "Execution " + executionId + " belongs to another instance, not " + targetId + ".");
-                }
-            }
+            // rawVariable refuses an execution of another instance (#756, shared with the read).
             return detail.rawVariable(engine, targetId, name, executionId);
         }
         CmmnCapabilities.requireScopeType(registry, engine);
