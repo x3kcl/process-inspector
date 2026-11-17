@@ -551,8 +551,9 @@ public class FlowSurgeryService {
      */
     private List<Map<String, Object>> portableHistoricVariables(
             EngineConfig engine, String instanceId, Map<String, String> skipped) {
-        HistoricVariablePage page =
-                client.listHistoricVariableInstances(engine, CallPriority.INTERACTIVE, instanceId, VARIABLE_FETCH_CAP);
+        // #718: filtered to the process-instance execution — 6.3 rows carry no scope to tell locals apart
+        HistoricVariablePage page = client.listProcessScopeHistoricVariables(
+                engine, CallPriority.INTERACTIVE, instanceId, VARIABLE_FETCH_CAP);
         List<HistoricVariableRecord> rows = page != null ? page.dataOrEmpty() : List.of();
         if (page != null && page.total() > rows.size()) {
             throw new GuardRefusedException(

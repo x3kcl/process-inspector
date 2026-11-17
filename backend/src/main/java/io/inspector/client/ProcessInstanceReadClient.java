@@ -423,6 +423,27 @@ final class ProcessInstanceReadClient {
                         .body(HistoricVariablePage.class));
     }
 
+    /**
+     * The PROCESS-scope historic variables: those on the process-instance execution
+     * ({@code executionId=processInstanceId}). 6.3 sends {@code scope: null} and no
+     * {@code executionId} on the row, but honors this filter (live-probed on 6.3.1, 6.8, 7.1; #718).
+     */
+    public HistoricVariablePage listProcessScopeHistoricVariables(
+            EngineConfig engine, CallPriority priority, String processInstanceId, int size) {
+        return guarded.call(
+                engine,
+                priority,
+                () -> guarded.readClient(engine)
+                        .get()
+                        .uri(uri -> uri.path("/history/historic-variable-instances")
+                                .queryParam("processInstanceId", processInstanceId)
+                                .queryParam("executionId", processInstanceId)
+                                .queryParam("size", size)
+                                .build())
+                        .retrieve()
+                        .body(HistoricVariablePage.class));
+    }
+
     /** GET /history/historic-activity-instances — one timeline page, startTime ascending. */
     public ActivityInstancePage listHistoricActivities(
             EngineConfig engine, CallPriority priority, String processInstanceId, int start, int size) {

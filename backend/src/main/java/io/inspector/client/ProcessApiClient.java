@@ -148,6 +148,11 @@ public class ProcessApiClient {
         return reads.listHistoricVariableInstances(engine, priority, processInstanceId, size);
     }
 
+    public HistoricVariablePage listProcessScopeHistoricVariables(
+            EngineConfig engine, CallPriority priority, String processInstanceId, int size) {
+        return reads.listProcessScopeHistoricVariables(engine, priority, processInstanceId, size);
+    }
+
     public ActivityInstancePage listHistoricActivities(
             EngineConfig engine, CallPriority priority, String processInstanceId, int start, int size) {
         return reads.listHistoricActivities(engine, priority, processInstanceId, start, size);
