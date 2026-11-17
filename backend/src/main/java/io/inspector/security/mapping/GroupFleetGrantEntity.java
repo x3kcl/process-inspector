@@ -9,7 +9,7 @@ import jakarta.persistence.Table;
 import java.time.Instant;
 
 /**
- * One fleet grant row (group → REGISTRY_ADMIN | ACCESS_ADMIN). Maps onto {@code group_fleet_grant}
+ * One fleet grant row (group → REGISTRY_ADMIN | ACCESS_ADMIN | METRICS). Maps onto {@code group_fleet_grant}
  * (V13), orthogonal to the ladder — a fleet grant must never read as a {@code (role,engine,tenant)}
  * row. {@code UNIQUE(group, grant_kind)} (IDP-SECURITY.md §11).
  */

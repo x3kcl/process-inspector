@@ -39,8 +39,8 @@ class EnginesControllerTest {
     private static EnginesController controllerOf(EngineConfig... engines) {
         EngineRegistry registry = new EngineRegistry(new InspectorProperties(4, 10, null, null, List.of(engines)));
         // #740: read-scope enforcement OFF (the default) — the list is the unfiltered display surface.
-        ReadScopeGate off =
-                new ReadScopeGate(null, registry, new SecurityProperties(null, null, null, null, null, false, null));
+        ReadScopeGate off = new ReadScopeGate(
+                null, registry, new SecurityProperties(null, null, null, null, null, false, null, null));
         return new EnginesController(registry, null, off, null);
     }
 

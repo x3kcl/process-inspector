@@ -94,4 +94,23 @@ class MappingSeederTest {
         verify(audit).recordConfigEvent(eq("mapping-seed"), eq("system"), eq(true), anyMap());
         verify(store).seed(eq(List.of()), org.mockito.ArgumentMatchers.argThat(l -> l.size() == 1));
     }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void aConfiguredMetricsGroupIsSeededAsAMetricsFleetGrant() {
+        when(store.isEmpty()).thenReturn(true);
+        when(file.allGrantsByGroup()).thenReturn(Map.of());
+        when(security.registryAdminGroupOrDefault()).thenReturn("registry-admin");
+        when(security.metricsGroupOrNull()).thenReturn("scrapers");
+
+        seeder.run(null);
+
+        ArgumentCaptor<List<GroupFleetGrantEntity>> fleet = ArgumentCaptor.forClass(List.class);
+        verify(store).seed(eq(List.of()), fleet.capture());
+        assertThat(fleet.getValue())
+                .extracting(GroupFleetGrantEntity::getGroupName, GroupFleetGrantEntity::getGrantKind)
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple("registry-admin", FleetGrant.REGISTRY_ADMIN),
+                        org.assertj.core.groups.Tuple.tuple("scrapers", FleetGrant.METRICS));
+    }
 }

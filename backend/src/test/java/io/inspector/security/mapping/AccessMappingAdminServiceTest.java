@@ -169,7 +169,10 @@ class AccessMappingAdminServiceTest {
                 Arguments.of(GrantChange.ladderAdd("ops", Role.ADMIN, "e1", "*"), false),
                 // (c) any fleet create; ACCESS_ADMIN also fires the detective alert
                 Arguments.of(GrantChange.fleetAdd("ops", FleetGrant.REGISTRY_ADMIN), false),
-                Arguments.of(GrantChange.fleetAdd("ops", FleetGrant.ACCESS_ADMIN), true));
+                Arguments.of(GrantChange.fleetAdd("ops", FleetGrant.ACCESS_ADMIN), true),
+                // #772: granting and revoking METRICS are fleet changes — four-eyes, audited, no alert
+                Arguments.of(GrantChange.fleetAdd("scrapers", FleetGrant.METRICS), false),
+                Arguments.of(GrantChange.fleetRemove("scrapers", FleetGrant.METRICS), false));
     }
 
     @ParameterizedTest
@@ -378,5 +381,31 @@ class AccessMappingAdminServiceTest {
                 .hasMessage("x");
         assertThat(Set.of(new CrudDisabledException("a").getMessage(), new ApexInvariantException("b").getMessage()))
                 .containsExactlyInAnyOrder("a", "b");
+    }
+
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {true, false})
+    void anApprovedMetricsGrantOrRevokeAppliesAuditedWithoutTheApexAlert(boolean add) throws Exception {
+        apexGroups("admins-a", "admins-b");
+        GrantChange change = add
+                ? GrantChange.fleetAdd("scrapers", FleetGrant.METRICS)
+                : GrantChange.fleetRemove("scrapers", FleetGrant.METRICS);
+        pending(change, "alice");
+
+        Outcome outcome = service("admins-a").approve(7L, user("bob", "admins-b"));
+
+        assertThat(outcome.status()).isEqualTo("applied");
+        verify(store).apply(change);
+        verify(audit)
+                .beginPending(
+                        eq("bob"),
+                        any(),
+                        any(),
+                        eq("scrapers"),
+                        eq(add ? "grant-add" : "grant-remove"),
+                        startsWith("four-eyes approval of proposal #7"),
+                        any(),
+                        anyMap());
+        verifyNoInteractions(alert);
     }
 }

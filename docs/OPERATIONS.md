@@ -40,7 +40,7 @@ R-SAFE-06/07 (REQUIREMENTS-REGISTER.md).
 > 15-min TTL" (a materially bigger feature layering a cached trace view on the EXISTING
 > `EngineCallRecorder`, itself only wired for on-demand "Explain this status" re-derivation today —
 > tracked separately, not claimed here).
-- `/actuator/prometheus` (auth-gated). Metric set: `audit_insert_failures_total`,
+- `/actuator/prometheus` (`METRICS` grant or fleet ADMIN — see "Scraper account" below). Metric set: `audit_insert_failures_total`,
   `engine_fanout_duration_seconds` (tags `engineId`,`leg`), `resilience4j_circuitbreaker_state`,
   `sse_emitters_active` + `sse_emitter_errors_total` + `sse_emitter_disconnects_total`, `bulk_jobs_running` +
   `bulk_item_outcomes_total`, `oidc_login_failures_total`, `snapshot_last_success_seconds`,
@@ -72,9 +72,40 @@ DATA-CLASSIFICATION. The shipper example is `deploy/observability/vector.toml`. 
 query against the JSON is `application="process-inspector"` and a verb field on the audit log,
 not on every line.
 
+**Scraper account (#772).** `/actuator/prometheus` and `/actuator/info` answer only a principal
+holding the `METRICS` fleet grant or ADMIN on every engine and tenant; anyone else signed in gets
+`403`, an anonymous scrape `401`. Health, liveness and readiness are unchanged (open).
+
+| Endpoint | Before #772 | After #772 |
+|---|---|---|
+| `/actuator/health`, `/health/liveness`, `/health/readiness` | anyone | anyone (unchanged) |
+| `/actuator` (links root) | any signed-in | any signed-in (unchanged) |
+| `/actuator/prometheus` | any signed-in | `METRICS` or fleet ADMIN |
+| `/actuator/info` (build info) | any signed-in | `METRICS` or fleet ADMIN |
+
+Giving a scraper the grant:
+- **Dev / demo ladder (`!oidc`).** Basic-auth as the built-in `metrics` user (password
+  `INSPECTOR_DEV_PASSWORD`) — it holds only `METRICS`. The `admin` user also reads metrics
+  (fleet ADMIN); `viewer` no longer does. `deploy/prometheus/prometheus.demo.yml` scrapes as
+  `metrics`.
+- **`oidc`, file mapping.** Set `INSPECTOR_METRICS_GROUP` (`inspector.security.metrics-group`)
+  to the IdP group of the scrape identity. Unset = no group confers `METRICS` (no default name).
+- **`oidc`, DB mapping.** An `ACCESS_ADMIN` adds a fleet grant `METRICS` for the group on
+  `/admin/access` (or `POST /api/admin/access/grants` with `type: fleet`, `fleetGrant: METRICS`);
+  a fleet create is four-eyes, then audited `grant-add`. The first DB seed imports a configured
+  `metrics-group` as a `file-seed` row. V29 widens the `group_fleet_grant` CHECK to allow it.
+
+The `oidc` chain has no Basic auth, so a non-browser scraper still needs a session the IdP issued
+(unchanged by #772).
+
+**Upgrade note (#772).** A deployment that scrapes with an account holding no `METRICS` grant —
+including a ladder VIEWER/OPERATOR or an engine-scoped ADMIN — gets `403` from the first release
+carrying #772. Grant `METRICS` to the scrape account before upgrading, or the
+`AuditInsertFailures`/fan-out alerts go silent behind a failing scrape.
+
 **Dashboards (#469).** `deploy/grafana/dashboards/` holds fleet, BFF, and operations.
-`docker compose --profile observability up` from `docker/` starts Prometheus (scrape password
-from `INSPECTOR_DEV_PASSWORD`), Grafana with anonymous view on `127.0.0.1:3000`, an
+`docker compose --profile observability up` from `docker/` starts Prometheus (scraping as the
+`metrics` user, password from `INSPECTOR_DEV_PASSWORD`), Grafana with anonymous view on `127.0.0.1:3000`, an
 OpenTelemetry collector, and Jaeger. The three dashboards are provisioned. They read the
 metrics above. Cache hit rate is still not a meter, so it is not a panel.
 
@@ -345,8 +376,8 @@ admin" (their name and Sign out stay in the header). Every data read refuses the
 `rbac-denied`) — distinct from a per-engine refusal of a user who holds a role elsewhere —
 so an access log full of `no-engine-role` names users waiting for a mapping, not an attack. Fix it by
 mapping one of their groups to at least VIEWER on one engine (`/admin/access`, or the mounted
-mapping file); it applies within the reload TTL, no re-login. `GET /api/me`, `GET /api/meta` and
-`/actuator/prometheus` stay readable to any signed-in principal.
+mapping file); it applies within the reload TTL, no re-login. `GET /api/me` and `GET /api/meta` stay readable to any signed-in principal;
+`/actuator/prometheus` and `/actuator/info` need the `METRICS` grant (#772, §2).
 **An admin with no engine role (#771).** A REGISTRY_ADMIN / ACCESS_ADMIN with no role on any engine
 is refused the same reads (`no-engine-role` in the access log) but the SPA lands them on their
 admin page with an "administrative access but no engine role" line, not on a page of refusals. If

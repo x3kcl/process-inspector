@@ -13,7 +13,7 @@ import {
   type LadderView,
   type Outcome,
 } from './accessAdmin'
-import { distinctGroups, outcomeNotice } from './accessView'
+import { distinctGroups, FLEET_GRANTS, outcomeNotice } from './accessView'
 import { FleetChip } from './FleetChip'
 
 /**
@@ -63,7 +63,8 @@ export function AdminAccessPage() {
       <p className="muted">
         The group→scope mapping — the single most privileged store in the tool. A row here can grant
         engine authority, repoint the credential vault (REGISTRY_ADMIN), or mint the apex
-        (ACCESS_ADMIN). Widening changes go through four-eyes.
+        (ACCESS_ADMIN), or let a scraper read the metrics endpoints (METRICS). Widening changes go
+        through four-eyes.
       </p>
 
       {notice !== null && (
@@ -331,8 +332,11 @@ function AddGrantForm({ onAdd }: { onAdd: (body: GrantRequest) => void }) {
                 setFleetGrant(e.target.value)
               }}
             >
-              <option value="REGISTRY_ADMIN">REGISTRY_ADMIN</option>
-              <option value="ACCESS_ADMIN">ACCESS_ADMIN</option>
+              {FLEET_GRANTS.map((g) => (
+                <option key={g} value={g}>
+                  {g}
+                </option>
+              ))}
             </select>
           </label>
         )}

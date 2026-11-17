@@ -41,7 +41,7 @@ class AlertWebhookSenderTest {
     }
 
     private static SecurityProperties props(String webhookRef) {
-        return new SecurityProperties(null, null, null, null, null, null, webhookRef);
+        return new SecurityProperties(null, null, null, null, null, null, webhookRef, null);
     }
 
     @Test

@@ -24,7 +24,7 @@ public interface MappingSource {
     /** Distinct ladder roles the groups grant anywhere — the coarse ROLE_* login authorities. */
     Set<Role> rolesForGroups(Collection<String> groups);
 
-    /** Fleet grants a user's groups carry (REGISTRY_ADMIN / ACCESS_ADMIN). */
+    /** Fleet grants a user's groups carry (REGISTRY_ADMIN / ACCESS_ADMIN / METRICS). */
     Set<FleetGrant> fleetGrantsForGroups(Collection<String> groups);
 
     /** The WHOLE ladder mapping (access-review, widen check, drift) — never keyed by a caller set. */

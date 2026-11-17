@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { FleetView, LadderView, Outcome } from './accessAdmin'
-import { distinctGroups, outcomeNotice } from './accessView'
+import { distinctGroups, FLEET_GRANTS, outcomeNotice } from './accessView'
 
 describe('distinctGroups', () => {
   it('collects + sorts distinct groups across ladder and fleet, dropping blanks', () => {
@@ -35,5 +35,11 @@ describe('outcomeNotice', () => {
     const o: Outcome = { status: 'proposed', summary: 's', eligibleApproverGroups: [] }
     expect(outcomeNotice(o)).toContain('file-pin')
     expect(outcomeNotice(o)).toContain('RUNBOOK')
+  })
+})
+
+describe('FLEET_GRANTS', () => {
+  it('offers the three fleet grants, METRICS included (#772)', () => {
+    expect(FLEET_GRANTS).toEqual(['REGISTRY_ADMIN', 'ACCESS_ADMIN', 'METRICS'])
   })
 })

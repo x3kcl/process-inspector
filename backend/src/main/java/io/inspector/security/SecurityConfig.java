@@ -10,6 +10,7 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.hierarchicalroles.RoleHierarchy;
 import org.springframework.security.access.hierarchicalroles.RoleHierarchyImpl;
+import org.springframework.security.authorization.AuthorizationDecision;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -89,7 +90,7 @@ public class SecurityConfig {
                 """);
     }
 
-    private HttpSecurity common(HttpSecurity http) throws Exception {
+    private HttpSecurity common(HttpSecurity http, RbacAuthorizer rbac) throws Exception {
         return http
                 // Ingress scrub (M4-CLOSEOUT §2 / D2c): a client-supplied X-Forwarded-User is never
                 // trusted or reflected — the BFF mints the outbound header from the audit actor alone.
@@ -143,6 +144,12 @@ public class SecurityConfig {
                                 // there), the same gate the POST handler uses.
                                 "/break-glass")
                         .permitAll()
+                        // #772: the metrics-bearing actuator endpoints need the METRICS fleet grant or
+                        // fleet-wide ADMIN. Here in the shared part so BOTH chains carry it; an
+                        // anonymous caller is still sent to the entry point (401), as before.
+                        .requestMatchers("/actuator/prometheus", "/actuator/info")
+                        .access((authentication, context) ->
+                                new AuthorizationDecision(rbac.canReadMetrics(authentication.get())))
                         .anyRequest()
                         .authenticated())
                 // API routes answer a hard 401 — never a login-page redirect (the SPA owns
@@ -154,12 +161,12 @@ public class SecurityConfig {
 
     @Bean
     @Profile("!oidc")
-    SecurityFilterChain devChain(HttpSecurity http) throws Exception {
+    SecurityFilterChain devChain(HttpSecurity http, RbacAuthorizer rbac) throws Exception {
         // Basic auth persists into the HTTP session (Security 6 default is stateless):
         // the SSE stream (v1.x #2) authenticates as a browser EventSource, which cannot
         // send an Authorization header — it rides the JSESSIONID the first authenticated
         // XHR established, matching the oidc chain's session semantics.
-        return common(http)
+        return common(http, rbac)
                 // Dev Basic re-authenticates every XHR; changeSessionId would re-ID JSESSIONID each
                 // time and orphan the long-lived SSE EventSource (⚠️ lead-dev). Keep the session id
                 // STABLE on this chain — fixation protection is applied on the oidc chain only.
@@ -219,6 +226,12 @@ public class SecurityConfig {
                 User.withUsername("access-admin")
                         .password(password)
                         .authorities(RbacAuthorizer.ACCESS_ADMIN_AUTHORITY, "ROLE_" + Role.VIEWER.name())
+                        .build(),
+                // Fleet METRICS (#772) — the scraper account: reads /actuator/prometheus and
+                // /actuator/info and nothing else (no ladder rung, so every data read refuses it).
+                User.withUsername("metrics")
+                        .password(password)
+                        .authorities(RbacAuthorizer.METRICS_AUTHORITY)
                         .build());
     }
 
@@ -229,9 +242,10 @@ public class SecurityConfig {
             InspectorAuthoritiesMapper authoritiesMapper,
             ReauthConformantOidcUserService reauthConformantOidcUserService,
             ClientRegistrationRepository clientRegistrations,
-            OidcLoginFailureHandler oidcLoginFailures)
+            OidcLoginFailureHandler oidcLoginFailures,
+            RbacAuthorizer rbac)
             throws Exception {
-        common(http)
+        common(http, rbac)
                 // Session-fixation protection on the oidc chain: a fresh JSESSIONID at login (the SSE
                 // stream rides the post-login session, so a single change at login doesn't orphan it).
                 .sessionManagement(session -> session.sessionFixation(fixation -> fixation.changeSessionId()))

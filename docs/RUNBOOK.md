@@ -262,7 +262,9 @@ show the same bodies.
 
 Prometheus rule definitions for the alerts below live in `deploy/prometheus/alert-rules.yml`
 (issue #96) — hand that file to whichever monitoring stack scrapes `/actuator/prometheus` (none is
-deployed by this repo's `docker/*.yml`). `Readiness failing > 2 min` and `disk > 80%` are written
+deployed by this repo's `docker/*.yml`). The scrape account needs the `METRICS` fleet grant or
+ADMIN on every engine (#772); a scrape answering `403` is an account without it — grant it
+(OPERATIONS §2 "Scraper account"), not a broken BFF. `Readiness failing > 2 min` and `disk > 80%` are written
 but need an exporter this repo does not deploy (`blackbox_exporter`/`node_exporter` — see
 `deploy/README.md`); every other row already fires off a metric this app emits today.
 

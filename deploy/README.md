@@ -207,8 +207,9 @@ restart-required step:
 ## `prometheus/alert-rules.yml` — RUNBOOK §7's alert contract (issue #96, OPERATIONS §3)
 
 The alert side of RUNBOOK.md §7's "Alerts → actions" table, in standard Prometheus alerting-rule
-YAML — hand this to whatever Prometheus/Alertmanager stack scrapes the BFF's auth-gated
-`/actuator/prometheus` (no monitoring stack is deployed by THIS repo's `docker/*.yml`). Every
+YAML — hand this to whatever Prometheus/Alertmanager stack scrapes the BFF's
+`/actuator/prometheus` (the scrape account needs the `METRICS` fleet grant or fleet ADMIN, #772 —
+OPERATIONS §2) (no monitoring stack is deployed by THIS repo's `docker/*.yml`). Every
 expression is checked against a real running instance's scrape output, not assumed.
 
 Two rules are marked **infra-dependent** in the file itself: `InspectorReadinessFailing` needs

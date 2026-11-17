@@ -32,7 +32,8 @@ class ReadScopeGateCanReadTest {
     private ReadScopeGate gate(boolean enforced) {
         EngineRegistry registry =
                 new EngineRegistry(new InspectorProperties(4, 10, null, null, List.of(engineA, engineB, disabledA)));
-        return new ReadScopeGate(rbac, registry, new SecurityProperties(null, null, null, null, null, enforced, null));
+        return new ReadScopeGate(
+                rbac, registry, new SecurityProperties(null, null, null, null, null, enforced, null, null));
     }
 
     @Test
