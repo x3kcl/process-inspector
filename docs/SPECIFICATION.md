@@ -814,7 +814,8 @@ PERSON have, across every engine" — the "Bob is on vacation" query. Search sta
   identity-links read needs at least VIEWER on the engine (the instance identity-links rule): a
   signed-in user with no role there gets the same 403 with enforcement off too. The fan-out reads
   still open to any signed-in user with enforcement off (catalog definitions, deployments, engine
-  list/system, jobs explorer, person task search, task browse) are named in
+  list/system, jobs explorer, person task search, task browse, instance search, triage
+  dashboard/trends/leak views) are named in
   `EngineRoleExpressionGuardArchTest`; closing them is a separate decision. Off ⇒ every engine, as before. Every controller
   route that returns per-engine data is scoped by method security naming the engine, by the
   read-scope gate, or is a named exception — the route sweep and its guard test

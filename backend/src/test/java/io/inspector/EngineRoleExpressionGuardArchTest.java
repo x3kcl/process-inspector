@@ -10,6 +10,7 @@ import com.tngtech.archunit.core.domain.JavaMethodCall;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;
 import io.inspector.registry.EngineRegistry;
+import io.inspector.security.ReadScopeGate;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
 import java.util.ArrayDeque;
@@ -34,23 +35,26 @@ import org.springframework.web.bind.annotation.RestController;
  */
 class EngineRoleExpressionGuardArchTest {
 
-    static final Map<String, String> EXCEPTIONS = Map.of(
-            "CatalogController.definitions",
-            "open to any signed-in user with enforcement off; fans out over the registry, narrowed by ReadScopeGate under enforcement only",
-            "DeploymentsController.list",
-            "open to any signed-in user with enforcement off; fans out over the registry, narrowed by ReadScopeGate under enforcement only",
-            "EnginesController.list",
-            "open to any signed-in user with enforcement off; fans out over the registry, narrowed by ReadScopeGate under enforcement only",
-            "EnginesController.system",
-            "open to any signed-in user with enforcement off; fans out over the registry, narrowed by ReadScopeGate under enforcement only",
-            "JobsExplorerController.list",
-            "open to any signed-in user with enforcement off; fans out over the registry, narrowed by ReadScopeGate under enforcement only",
-            "PersonTaskSearchController.searchByPerson",
-            "open to any signed-in user with enforcement off; fans out over the registry, narrowed by ReadScopeGate under enforcement only",
-            "TaskBrowseController.list",
-            "open to any signed-in user with enforcement off; fans out over the registry, narrowed by ReadScopeGate under enforcement only",
-            "MeController.me",
-            "lists the caller's OWN role per engine (same exception as EngineScopedRouteGuardArchTest)");
+    private static final String FAN_OUT =
+            "open to any signed-in user with enforcement off; fans out over the registry, narrowed by ReadScopeGate under enforcement only";
+    private static final String PROJECTED =
+            "open to any signed-in user with enforcement off; scope projected by the service (ReadScopeGate) under enforcement only";
+
+    static final Map<String, String> EXCEPTIONS = Map.ofEntries(
+            Map.entry("CatalogController.definitions", FAN_OUT),
+            Map.entry("DeploymentsController.list", FAN_OUT),
+            Map.entry("EnginesController.list", FAN_OUT),
+            Map.entry("EnginesController.system", FAN_OUT),
+            Map.entry("JobsExplorerController.list", FAN_OUT),
+            Map.entry("PersonTaskSearchController.searchByPerson", FAN_OUT),
+            Map.entry("TaskBrowseController.list", FAN_OUT),
+            Map.entry("SearchController.search", FAN_OUT),
+            Map.entry("TriageController.dashboard", PROJECTED),
+            Map.entry("TriageController.leakViews", PROJECTED),
+            Map.entry("TriageController.trends", PROJECTED),
+            Map.entry(
+                    "MeController.me",
+                    "lists the caller's OWN role per engine (same exception as EngineScopedRouteGuardArchTest)"));
 
     private static final JavaClasses MAIN = new ClassFileImporter()
             .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
@@ -70,13 +74,25 @@ class EngineRoleExpressionGuardArchTest {
                 Set<String> calls = reachableCalls(controller, route);
                 boolean iterates = calls.contains(EngineRegistry.class.getName() + ".all")
                         || calls.contains(EngineRegistry.class.getName() + ".allForDisplay");
-                if ((takesEngine(controller, route) || iterates)
+                // A route that consults the read scope (ReadScopeGate itself, or a service holding it)
+                // reads per-engine data even when it names no engine and iterates no registry.
+                boolean scoped = calls.stream()
+                        .map(c -> c.substring(0, c.lastIndexOf('.')))
+                        .anyMatch(owner -> !owner.equals(controller.getName()) && holdsReadScope(owner));
+                if ((takesEngine(controller, route) || iterates || scoped)
                         && preAuthorize(controller, route).isEmpty()) {
                     noRole.put(controller.getSimpleName() + "." + route.getName(), "no role expression");
                 }
             }
         }
         assertThat(noRole.keySet()).containsExactlyInAnyOrderElementsOf(EXCEPTIONS.keySet());
+    }
+
+    private static boolean holdsReadScope(String owner) {
+        return owner.equals(ReadScopeGate.class.getName())
+                || (MAIN.contain(owner)
+                        && MAIN.get(owner).getAllFields().stream()
+                                .anyMatch(f -> f.getRawType().isEquivalentTo(ReadScopeGate.class)));
     }
 
     private static boolean isRoute(JavaMethod m) {
