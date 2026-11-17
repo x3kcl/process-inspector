@@ -61,4 +61,9 @@ public class ReadScopeGate {
                 .map(EngineConfig::id)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
     }
+
+    /** #740 RED stub — the per-engine read check; not implemented yet. */
+    public boolean canRead(Authentication auth, String engineId) {
+        return true;
+    }
 }

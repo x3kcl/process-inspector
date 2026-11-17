@@ -5,6 +5,7 @@ import io.inspector.registry.EngineRegistry;
 import io.inspector.registry.EngineSystemInfoService;
 import io.inspector.registry.EngineSystemInfoService.EngineSystemInfo;
 import io.inspector.security.RbacAuthorizer;
+import io.inspector.security.ReadScopeGate;
 import java.util.List;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
@@ -29,14 +30,19 @@ public class EnginesController {
 
     private final EngineRegistry registry;
     private final EngineSystemInfoService systemInfo;
+    private final ReadScopeGate gate;
+    private final RbacAuthorizer rbac;
 
-    public EnginesController(EngineRegistry registry, EngineSystemInfoService systemInfo) {
+    public EnginesController(
+            EngineRegistry registry, EngineSystemInfoService systemInfo, ReadScopeGate gate, RbacAuthorizer rbac) {
         this.registry = registry;
         this.systemInfo = systemInfo;
+        this.gate = gate;
+        this.rbac = rbac;
     }
 
     @GetMapping
-    public List<EngineDto> list() {
+    public List<EngineDto> list(Authentication auth) {
         return registry.allForDisplay().stream()
                 .map(e -> EngineDto.from(e, registry.healthOf(e.id())))
                 .toList();
