@@ -1,0 +1,15 @@
+{
+  "name": "aJson",
+  "scope": null,
+  "type": "json",
+  "value": {
+    "a": [
+      1,
+      2,
+      {
+        "b": null
+      }
+    ],
+    "n": 9007199254740993
+  }
+}

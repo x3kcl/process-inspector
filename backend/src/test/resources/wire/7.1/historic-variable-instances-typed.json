@@ -1,0 +1,173 @@
+{
+  "data": [
+    {
+      "executionId": "219bcd42-e247-11f1-bf13-26c4c8705bcb",
+      "id": "21b8560e-e247-11f1-bf13-26c4c8705bcb",
+      "processInstanceId": "219bcd42-e247-11f1-bf13-26c4c8705bcb",
+      "processInstanceUrl": "http://localhost:8080/flowable-rest/service/history/historic-process-instances/219bcd42-e247-11f1-bf13-26c4c8705bcb",
+      "taskId": null,
+      "variable": {
+        "name": "aBinary",
+        "scope": "global",
+        "type": "binary",
+        "value": null,
+        "valueUrl": "http://localhost:8080/flowable-rest/service/history/historic-variable-instances/21b8560e-e247-11f1-bf13-26c4c8705bcb/data"
+      }
+    },
+    {
+      "executionId": "219bcd42-e247-11f1-bf13-26c4c8705bcb",
+      "id": "219bf454-e247-11f1-bf13-26c4c8705bcb",
+      "processInstanceId": "219bcd42-e247-11f1-bf13-26c4c8705bcb",
+      "processInstanceUrl": "http://localhost:8080/flowable-rest/service/history/historic-process-instances/219bcd42-e247-11f1-bf13-26c4c8705bcb",
+      "taskId": null,
+      "variable": {
+        "name": "aBoolean",
+        "scope": "global",
+        "type": "boolean",
+        "value": false
+      }
+    },
+    {
+      "executionId": "219bcd42-e247-11f1-bf13-26c4c8705bcb",
+      "id": "219d2ce0-e247-11f1-bf13-26c4c8705bcb",
+      "processInstanceId": "219bcd42-e247-11f1-bf13-26c4c8705bcb",
+      "processInstanceUrl": "http://localhost:8080/flowable-rest/service/history/historic-process-instances/219bcd42-e247-11f1-bf13-26c4c8705bcb",
+      "taskId": null,
+      "variable": {
+        "name": "aDate",
+        "scope": "global",
+        "type": "date",
+        "value": "2026-01-02T03:04:05Z"
+      }
+    },
+    {
+      "executionId": "219bcd42-e247-11f1-bf13-26c4c8705bcb",
+      "id": "219d2ce2-e247-11f1-bf13-26c4c8705bcb",
+      "processInstanceId": "219bcd42-e247-11f1-bf13-26c4c8705bcb",
+      "processInstanceUrl": "http://localhost:8080/flowable-rest/service/history/historic-process-instances/219bcd42-e247-11f1-bf13-26c4c8705bcb",
+      "taskId": null,
+      "variable": {
+        "name": "aDouble",
+        "scope": "global",
+        "type": "double",
+        "value": 1.5
+      }
+    },
+    {
+      "executionId": "219bcd42-e247-11f1-bf13-26c4c8705bcb",
+      "id": "219d05c8-e247-11f1-bf13-26c4c8705bcb",
+      "processInstanceId": "219bcd42-e247-11f1-bf13-26c4c8705bcb",
+      "processInstanceUrl": "http://localhost:8080/flowable-rest/service/history/historic-process-instances/219bcd42-e247-11f1-bf13-26c4c8705bcb",
+      "taskId": null,
+      "variable": {
+        "name": "aJson",
+        "scope": "global",
+        "type": "json",
+        "value": {
+          "a": [
+            1,
+            2,
+            {
+              "b": null
+            }
+          ],
+          "n": 9007199254740993
+        }
+      }
+    },
+    {
+      "executionId": "219bcd42-e247-11f1-bf13-26c4c8705bcb",
+      "id": "219d2cde-e247-11f1-bf13-26c4c8705bcb",
+      "processInstanceId": "219bcd42-e247-11f1-bf13-26c4c8705bcb",
+      "processInstanceUrl": "http://localhost:8080/flowable-rest/service/history/historic-process-instances/219bcd42-e247-11f1-bf13-26c4c8705bcb",
+      "taskId": null,
+      "variable": {
+        "name": "aLong",
+        "scope": "global",
+        "type": "long",
+        "value": 9007199254740993
+      }
+    },
+    {
+      "executionId": "219bcd42-e247-11f1-bf13-26c4c8705bcb",
+      "id": "219d2cdc-e247-11f1-bf13-26c4c8705bcb",
+      "processInstanceId": "219bcd42-e247-11f1-bf13-26c4c8705bcb",
+      "processInstanceUrl": "http://localhost:8080/flowable-rest/service/history/historic-process-instances/219bcd42-e247-11f1-bf13-26c4c8705bcb",
+      "taskId": null,
+      "variable": {
+        "name": "aNull",
+        "scope": "global",
+        "value": null
+      }
+    },
+    {
+      "executionId": "219bcd42-e247-11f1-bf13-26c4c8705bcb",
+      "id": "219c1b66-e247-11f1-bf13-26c4c8705bcb",
+      "processInstanceId": "219bcd42-e247-11f1-bf13-26c4c8705bcb",
+      "processInstanceUrl": "http://localhost:8080/flowable-rest/service/history/historic-process-instances/219bcd42-e247-11f1-bf13-26c4c8705bcb",
+      "taskId": null,
+      "variable": {
+        "name": "aSmallLong",
+        "scope": "global",
+        "type": "long",
+        "value": 5
+      }
+    },
+    {
+      "executionId": "219bcd42-e247-11f1-bf13-26c4c8705bcb",
+      "id": "219d2cda-e247-11f1-bf13-26c4c8705bcb",
+      "processInstanceId": "219bcd42-e247-11f1-bf13-26c4c8705bcb",
+      "processInstanceUrl": "http://localhost:8080/flowable-rest/service/history/historic-process-instances/219bcd42-e247-11f1-bf13-26c4c8705bcb",
+      "taskId": null,
+      "variable": {
+        "name": "aString",
+        "scope": "global",
+        "type": "string",
+        "value": "2026-01-02"
+      }
+    },
+    {
+      "executionId": "219bcd42-e247-11f1-bf13-26c4c8705bcb",
+      "id": "219d2ce4-e247-11f1-bf13-26c4c8705bcb",
+      "processInstanceId": "219bcd42-e247-11f1-bf13-26c4c8705bcb",
+      "processInstanceUrl": "http://localhost:8080/flowable-rest/service/history/historic-process-instances/219bcd42-e247-11f1-bf13-26c4c8705bcb",
+      "taskId": null,
+      "variable": {
+        "name": "anInteger",
+        "scope": "global",
+        "type": "integer",
+        "value": 100
+      }
+    },
+    {
+      "executionId": "219d53f6-e247-11f1-bf13-26c4c8705bcb",
+      "id": "21e49634-e247-11f1-bf13-26c4c8705bcb",
+      "processInstanceId": "219bcd42-e247-11f1-bf13-26c4c8705bcb",
+      "processInstanceUrl": "http://localhost:8080/flowable-rest/service/history/historic-process-instances/219bcd42-e247-11f1-bf13-26c4c8705bcb",
+      "taskId": null,
+      "variable": {
+        "name": "stepLong",
+        "scope": "local",
+        "type": "long",
+        "value": 9007199254740993
+      }
+    },
+    {
+      "executionId": "219d53f6-e247-11f1-bf13-26c4c8705bcb",
+      "id": "21e42102-e247-11f1-bf13-26c4c8705bcb",
+      "processInstanceId": "219bcd42-e247-11f1-bf13-26c4c8705bcb",
+      "processInstanceUrl": "http://localhost:8080/flowable-rest/service/history/historic-process-instances/219bcd42-e247-11f1-bf13-26c4c8705bcb",
+      "taskId": null,
+      "variable": {
+        "name": "stepNull",
+        "scope": "local",
+        "value": null
+      }
+    }
+  ],
+  "order": "asc",
+  "size": 12,
+  "sort": "variableName",
+  "start": 0,
+  "total": 12
+}
