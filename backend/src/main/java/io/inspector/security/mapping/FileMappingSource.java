@@ -17,7 +17,8 @@ import org.springframework.stereotype.Component;
  * Ladder resolution + enumeration delegate to the hot-reloaded {@link ScopeMappingService}; fleet
  * grants come from config — {@code REGISTRY_ADMIN} from the unchanged
  * {@code SecurityProperties.registryAdminGroup}, {@code ACCESS_ADMIN} from the env-bootstrap
- * {@code inspector.security.mapping.access-admin-group}. CRUD is off in this mode (S4 403s it);
+ * {@code inspector.security.mapping.access-admin-group}, {@code METRICS} from the optional
+ * {@code SecurityProperties.metricsGroup}. CRUD is off in this mode (S4 403s it);
  * the large rung-3 suite keeps this source with zero new mocks.
  */
 @Component
@@ -54,6 +55,10 @@ public class FileMappingSource implements MappingSource {
         if (apex != null && groups.contains(apex)) {
             grants.add(FleetGrant.ACCESS_ADMIN);
         }
+        String metrics = security.metricsGroupOrNull();
+        if (metrics != null && groups.contains(metrics)) {
+            grants.add(FleetGrant.METRICS);
+        }
         return grants;
     }
 
@@ -75,6 +80,10 @@ public class FileMappingSource implements MappingSource {
         String apex = mapping.accessAdminGroupOrNull();
         if (apex != null) {
             rows.add(new FleetGrantRow(apex, FleetGrant.ACCESS_ADMIN, "env-bootstrap"));
+        }
+        String metrics = security.metricsGroupOrNull();
+        if (metrics != null) {
+            rows.add(new FleetGrantRow(metrics, FleetGrant.METRICS, "config"));
         }
         return List.copyOf(rows);
     }

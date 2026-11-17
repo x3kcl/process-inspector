@@ -1,5 +1,5 @@
 /**
- * Fleet-grant chip (IDP-SECURITY.md §12, ⚠️ UX). A fleet grant (REGISTRY_ADMIN / ACCESS_ADMIN)
+ * Fleet-grant chip (IDP-SECURITY.md §12, ⚠️ UX). A fleet grant (REGISTRY_ADMIN / ACCESS_ADMIN / METRICS)
  * must never read as a per-engine ADMIN in a flat, sortable table where a colour "band" evaporates.
  * So the distinction is INTRINSIC: an in-chip shape/glyph (◆) + a literal "FLEET" token + the kind
  * name — all textual, so it survives sort/filter and screen-reader linearization (not colour alone).

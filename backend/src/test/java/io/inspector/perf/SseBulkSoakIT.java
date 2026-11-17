@@ -330,11 +330,11 @@ class SseBulkSoakIT {
 
     private Metrics scrape() throws Exception {
         HttpClient client = clients.computeIfAbsent(
-                "viewer",
+                "metrics",
                 u -> HttpClient.newBuilder().cookieHandler(new CookieManager()).build());
         HttpResponse<String> response = client.send(
                 HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/actuator/prometheus"))
-                        .header("Authorization", basic("viewer"))
+                        .header("Authorization", basic("metrics"))
                         .build(),
                 HttpResponse.BodyHandlers.ofString());
         assertThat(response.statusCode()).as("/actuator/prometheus").isEqualTo(200);

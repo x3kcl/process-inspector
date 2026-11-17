@@ -50,6 +50,9 @@ public class RbacAuthorizer {
      */
     public static final String BREAK_GLASS_AUTHORITY = "ROLE_BREAK_GLASS";
 
+    /** The scraper's fleet grant (#772): reads the metrics-bearing actuator endpoints, nothing else. */
+    public static final String METRICS_AUTHORITY = "ROLE_METRICS";
+
     private final MappingSource mappingSource;
     private final InspectorProperties registry;
     private final OidcGroupResolver groupResolver;
@@ -121,6 +124,24 @@ public class RbacAuthorizer {
             return mappingSource.fleetGrantsForGroups(groupsOf(user)).contains(FleetGrant.ACCESS_ADMIN);
         }
         return auth.getAuthorities().stream().anyMatch(a -> ACCESS_ADMIN_AUTHORITY.equals(a.getAuthority()));
+    }
+
+    /**
+     * May this caller read the metrics-bearing actuator endpoints (#772)? The {@code METRICS} fleet
+     * grant (mapping seam for an OIDC session, {@code ROLE_METRICS} on a dev session) or ADMIN on every
+     * engine and tenant. An engine-scoped ADMIN, a lesser rung and the other fleet grants are refused.
+     */
+    public boolean canReadMetrics(Authentication auth) {
+        if (auth == null || !auth.isAuthenticated()) {
+            return false;
+        }
+        if (grantsFor(auth).contains(ScopeGrant.global(Role.ADMIN))) {
+            return true;
+        }
+        if (auth instanceof OAuth2AuthenticationToken oauth && oauth.getPrincipal() instanceof OAuth2User user) {
+            return mappingSource.fleetGrantsForGroups(groupsOf(user)).contains(FleetGrant.METRICS);
+        }
+        return auth.getAuthorities().stream().anyMatch(a -> METRICS_AUTHORITY.equals(a.getAuthority()));
     }
 
     /** Is this a break-glass session (sealed-account login)? Drives the audit flag + the red banner. */

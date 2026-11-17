@@ -72,6 +72,7 @@ public class MeController {
                 engineRoles,
                 rbac.canAdministerRegistry(authentication),
                 rbac.canAdministerAccess(authentication),
+                rbac.canReadMetrics(authentication),
                 rbac.isBreakGlass(authentication),
                 reauth.hint(authentication),
                 sessionExpiresAt(request));

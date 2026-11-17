@@ -20,6 +20,8 @@ public record MeDto(
         boolean registryAdmin,
         /** Apex ACCESS_ADMIN grant (v2 IdP-Security) — greys the /admin/access nav. */
         boolean accessAdmin,
+        /** Fleet METRICS grant (#772) — reads /actuator/prometheus and /actuator/info; no UI surface. */
+        boolean metrics,
         /** Break-glass session (v2 IdP-Security) — shows the permanent red banner + reason-on-every-verb. */
         boolean breakGlass,
         /**

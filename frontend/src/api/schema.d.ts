@@ -3422,6 +3422,7 @@ export interface components {
             engineRoles?: {
                 [key: string]: string;
             };
+            metrics?: boolean;
             reauth?: components["schemas"]["ReauthHint"];
             registryAdmin?: boolean;
             role?: string;

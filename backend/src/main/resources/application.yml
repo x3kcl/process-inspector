@@ -18,10 +18,10 @@ logging:
   pattern:
     correlation: "[%X{correlationId:-}] "
 
-# Observability (IMPROVEMENT-PLAN P1 #12 / Q1, OPERATIONS §8). `/actuator/health/**` is permitAll
-# in SecurityConfig for the container/k8s liveness+readiness probes; `/actuator/prometheus` stays
-# behind `.anyRequest().authenticated()` — an auth-gated scrape endpoint (OPERATIONS §8), so a
-# Prometheus scraper authenticates like any other caller. Only these three endpoints are exposed.
+# Observability (IMPROVEMENT-PLAN P1 #12 / Q1, OPERATIONS §2). `/actuator/health/**` is permitAll
+# in SecurityConfig for the container/k8s liveness+readiness probes; `/actuator/prometheus` and
+# `/actuator/info` need the METRICS fleet grant or fleet-wide ADMIN (#772), so a Prometheus scraper
+# signs in as an account holding METRICS. Only these three endpoints are exposed.
 management:
   endpoints:
     web:

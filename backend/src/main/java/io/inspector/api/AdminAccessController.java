@@ -158,7 +158,7 @@ public class AdminAccessController {
             String role, // ladder
             String engineId, // ladder
             String tenantId, // ladder
-            String fleetGrant, // fleet: REGISTRY_ADMIN | ACCESS_ADMIN
+            String fleetGrant, // fleet: REGISTRY_ADMIN | ACCESS_ADMIN | METRICS
             @Size(min = 10, max = 500) String reason) {
 
         String requireReason() {

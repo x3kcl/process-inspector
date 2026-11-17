@@ -60,7 +60,7 @@ class ActuatorEndpointsSpringTest {
         // Authenticated: 200 with real metrics — the JVM binder is always present, and every meter
         // carries the application tag. Proves the endpoint is live, not a documented 404.
         ResponseEntity<String> res =
-                rest.withBasicAuth("viewer", "dev").getForEntity("/actuator/prometheus", String.class);
+                rest.withBasicAuth("metrics", "dev").getForEntity("/actuator/prometheus", String.class);
         assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(res.getBody()).contains("jvm_memory_used_bytes");
         assertThat(res.getBody()).contains("application=\"process-inspector\"");
