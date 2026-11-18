@@ -31,5 +31,12 @@ grep -q '^  "[a-z0-9-]*|flowable-6,flowable-7,postgres|TaskAdminVerbsIT"$' ci/co
   || no "IT_LEGS has no flowable-6,flowable-7 leg for TaskAdminVerbsIT"
 grep -q 'nightly_its -Dit.test=.*[=,]TaskAdminVerbs68IT\b' ci/contract.sh \
   || no "the nightly engine-its list does not run TaskAdminVerbs68IT"
+# #786: definition heat on 6.8 + 7.1 on one leg, on 6.3.1 on a legacy leg, its 6.8-only twin nightly.
+grep -q '^  "[a-z0-9-]*|flowable-6,flowable-7,postgres|HeatIT"$' ci/contract.sh \
+  || no "IT_LEGS has no flowable-6,flowable-7 leg for HeatIT"
+grep -q '^  "legacy|legacy,postgres|HeatLegacyIT"$' ci/contract.sh \
+  || no "IT_LEGS has no legacy leg for HeatLegacyIT"
+grep -q 'nightly_its -Dit.test=.*[=,]Heat68IT\b' ci/contract.sh \
+  || no "the nightly engine-its list does not run Heat68IT"
 [ "$fail" = 0 ] && echo "contract-selftest: ok"
 exit "$fail"
