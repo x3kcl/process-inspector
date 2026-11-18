@@ -1,4 +1,11 @@
 {
   "//": "Dated exceptions for scripts/check-npm-audit-allowlist.mjs (issue #297). Every entry MUST carry a real expiry date so an exception can't rot silently — the checker hard-fails on an expired entry even if the advisory is still unfixed, forcing a human to re-look and either renew (fresh justification + new date) or escalate. Re-run `npm view <pkg> versions` for a fresh in-range fix before renewing (see .claude/skills memory: npm-audit-redocly-overrides — 'no fix available' is usually wrong the first time you check, but confirm it's still wrong before renewing on autopilot).",
-  "entries": []
+  "entries": [
+    {
+      "ghsaId": "GHSA-fc5q-39xc-vjpf",
+      "package": "picomatch",
+      "justification": "ReDoS through single-branch repeated extglobs; every published version is affected (<= 4.0.7, the latest) and none is patched as of 2026-11-18 (`npm view picomatch versions`). In this tree picomatch comes only through vite, vitest and tinyglobby/fdir — build and test tooling: `npm ls picomatch --omit=dev` is empty and `npm audit --omit=dev` reports no high/critical, so it is not in the production dependency tree and not in the shipped bundle. The attack needs an attacker-supplied glob pattern; the globs these tools match are the repository's own config. Owner decision 2026-11-18 (Bodo Naumann): allowlist for 30 days. Before renewing, re-run `npm view picomatch versions` for a patched release and `npm audit fix`.",
+      "expires": "2026-12-17"
+    }
+  ]
 }
