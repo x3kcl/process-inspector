@@ -273,3 +273,71 @@ describe('HeatTab', () => {
     expect(alert.textContent).toMatch(message)
   })
 })
+
+describe('HeatTab review (#785)', () => {
+  it('drops a refused refresh message once another version is picked', async () => {
+    serve({ heat: () => ok(heat()), refresh: () => refused(503, 'engine-unavailable') })
+    mount()
+    await screen.findByText(/sampled 150/)
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
+    await screen.findByRole('alert')
+    fireEvent.change(screen.getByLabelText(/Version/), { target: { value: 'order:1:a' } })
+    await waitFor(() => {
+      expect(heatCalls().some(([, i]) => i.params.path.definitionId === 'order:1:a')).toBe(true)
+    })
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('never files a refresh answer under the version picked while it was in flight', async () => {
+    let answer: (value: unknown) => void = () => undefined
+    serve({
+      heat: () => ok(heat()),
+      refresh: () =>
+        new Promise((resolve) => {
+          answer = resolve
+        }),
+    })
+    mount()
+    await screen.findByText(/sampled 150/)
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
+    fireEvent.change(screen.getByLabelText(/Version/), { target: { value: 'order:1:a' } })
+    await screen.findByText(/sampled 150/)
+    answer(ok(heat({ sampledInstances: 777 })))
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(screen.queryByText(/sampled 777/)).toBeNull()
+  })
+
+  it('words a throttled refresh as the server refusing it, true even after the time passes', async () => {
+    serve({
+      heat: () => ok(heat()),
+      refresh: () => ok(heat({ cached: true, refreshThrottledUntil: '2026-11-18T10:01:00Z' })),
+    })
+    mount()
+    await screen.findByText(/sampled 150/)
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
+    await waitFor(() => {
+      expect(document.body.textContent).toContain('server refused the last refresh')
+    })
+  })
+
+  it('asks the engine once when the gather is refused, whatever the client retry default', async () => {
+    serve({ heat: () => refused(503, 'heat-unavailable') })
+    const client = new QueryClient({ defaultOptions: { queries: { retry: 2, retryDelay: 0 } } })
+    render(
+      <QueryClientProvider client={client}>
+        <HeatTab engineId="eng1" currentId="order:2:b" versions={[]} />
+      </QueryClientProvider>,
+    )
+    await screen.findByRole('alert')
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(heatCalls()).toHaveLength(1)
+  })
+
+  it('says the heat is being read while the gather runs', async () => {
+    get.mockImplementation(() => new Promise(() => undefined))
+    mount()
+    await waitFor(() => {
+      expect(document.body.textContent).toContain('Reading heat')
+    })
+  })
+})
