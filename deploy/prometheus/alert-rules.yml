@@ -4,8 +4,8 @@
 #
 # Not deployed by this repo: no Prometheus/Alertmanager/Grafana stack lives in docker/*.yml —
 # this file is the alert-side contract to hand to whatever monitoring stack scrapes
-# /actuator/prometheus (auth-gated; the scrape job needs credentials, e.g. `viewer`/dev-ladder or
-# a dedicated read-only account in a real deploy). `job` label below assumes the scrape config
+# /actuator/prometheus (the scrape account needs the METRICS fleet grant or fleet ADMIN, #772 —
+# the dev-ladder `metrics` user, or OPERATIONS §2 in a real deploy). `job` label below assumes the scrape config
 # names this target "process-inspector" — adjust to match the real job name if it differs.
 #
 # Every expression here is checked against a REAL scrape of a running instance (not assumed) —

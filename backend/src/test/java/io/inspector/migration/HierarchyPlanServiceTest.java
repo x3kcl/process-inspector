@@ -321,9 +321,10 @@ class HierarchyPlanServiceTest {
                         () -> service.create(ENGINE, new HierarchyPlanRequests.HierarchyPlanCreate("root", null), auth))
                 .isInstanceOfSatisfying(
                         GuardRefusedException.class, e -> assertThat(e.code()).isEqualTo("rbac-denied"));
+        // #773: the read answers an ADMIN of another engine as it answers an unknown id.
         assertThatThrownBy(() -> service.get(view.id(), auth))
                 .isInstanceOfSatisfying(
-                        GuardRefusedException.class, e -> assertThat(e.code()).isEqualTo("rbac-denied"));
+                        GuardRefusedException.class, e -> assertThat(e.code()).isEqualTo("hierarchy-plan-not-found"));
         assertThatThrownBy(() -> service.decide(
                         view.id(), new HierarchyPlanRequests.HierarchyPlanDecide(B_DEF, true, null, null), auth))
                 .isInstanceOfSatisfying(

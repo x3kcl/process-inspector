@@ -612,7 +612,7 @@ class CorrectiveActionServiceTest {
     }
 
     @Test
-    void stepLocalEditRefusesAForeignExecutionBeforeAuditing() {
+    void stepLocalEditRefusesAForeignExecutionAndAuditsTheRefusal() {
         when(client.getExecution(any(), eq(CallPriority.INTERACTIVE), eq("exec-7")))
                 .thenReturn(ExecutionRecords.execution(Map.of("id", "exec-7", "processInstanceId", "pi-OTHER")));
 
@@ -621,7 +621,8 @@ class CorrectiveActionServiceTest {
                 .isInstanceOf(GuardRefusedException.class)
                 .satisfies(
                         e -> assertThat(((GuardRefusedException) e).code()).isEqualTo("execution-instance-mismatch"));
-        verifyNoInteractions(audit);
+        // #773: the one pre-flight refusal that IS audited — a failed row, nothing sent to the engine.
+        verify(audit).close(any(), eq(AuditOutcome.failed), eq(400), eq("execution-instance-mismatch"), eq(false));
         verify(client, never()).putExecutionVariable(any(), any(), anyString(), anyString(), any());
     }
 

@@ -513,6 +513,7 @@ already in SPEC §6.
   VIEWER < RESPONDER < OPERATOR < ADMIN          (the per-engine/tenant ladder)
   REGISTRY_ADMIN   — repoints the credential vault (engines)             [orthogonal]
   ACCESS_ADMIN     — defines who holds every grant, incl. the two above  [orthogonal, apex]
+  METRICS          — reads /actuator/prometheus + /actuator/info only    [orthogonal, #772]
   ```
 - **Governance ladder:** read mapping / access-review = `ACCESS_ADMIN` (**audited read** — recon
   oracle); narrow/remove a *ladder* grant = `ACCESS_ADMIN` + reason ≥10; self-widen, any wildcard

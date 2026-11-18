@@ -47,7 +47,7 @@ public class HierarchyMigrationController {
 
     /** The stored plan: tree, per-definition groups with their status, and whether it can be submitted. */
     @GetMapping("/migration/hierarchy/plans/{id}")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("@rbac.atLeast(authentication, 'ADMIN')")
     public HierarchyPlanView getPlan(@PathVariable UUID id, Authentication authentication) {
         return plans.get(id, authentication);
     }

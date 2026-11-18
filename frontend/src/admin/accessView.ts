@@ -2,6 +2,12 @@
 // without a DOM, matching the repo's logic-test convention).
 import type { FleetView, LadderView, Outcome } from './accessAdmin'
 
+/**
+ * The fleet grants an ACCESS_ADMIN can assign (FleetGrant on the BFF). METRICS (#772) is the
+ * scraper's grant: it reads /actuator/prometheus and /actuator/info and nothing else.
+ */
+export const FLEET_GRANTS = ['REGISTRY_ADMIN', 'ACCESS_ADMIN', 'METRICS'] as const
+
 /** Distinct, sorted group names across ladder + fleet grants (drives the grouped table). */
 export function distinctGroups(ladder: LadderView[], fleet: FleetView[]): string[] {
   const set = new Set<string>()

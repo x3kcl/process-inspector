@@ -17,6 +17,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.inspector.security.OidcGroupResolver;
 import io.inspector.security.Role;
 import io.inspector.security.ScopeGrant;
+import io.inspector.security.mapping.FleetGrant;
 import io.inspector.security.mapping.MappingSource;
 import io.inspector.support.NoDbTestSupport;
 import java.util.List;
@@ -57,6 +58,7 @@ class FleetReadFloorSpringTest {
 
     private static final String UNMAPPED = "unmapped-user";
     private static final String SCOPED = "probe-dev-viewer";
+    private static final String ADMIN_ONLY = "fleet-admin-only";
 
     @Autowired
     MockMvc mvc;
@@ -74,6 +76,9 @@ class FleetReadFloorSpringTest {
     void mapping() {
         when(groups.resolveForCheck(anyMap(), any(), eq(UNMAPPED))).thenReturn(List.of("no-such-team"));
         when(groups.resolveForCheck(anyMap(), any(), eq(SCOPED))).thenReturn(List.of("team-dev"));
+        when(groups.resolveForCheck(anyMap(), any(), eq(ADMIN_ONLY))).thenReturn(List.of("team-admins"));
+        when(mapping.fleetGrantsForGroups(List.of("team-admins")))
+                .thenReturn(Set.of(FleetGrant.REGISTRY_ADMIN, FleetGrant.ACCESS_ADMIN));
         when(mapping.grantsForGroups(List.of("team-dev")))
                 .thenReturn(Set.of(new ScopeGrant(Role.VIEWER, "probe-dev", ScopeGrant.ANY)));
     }
@@ -159,5 +164,17 @@ class FleetReadFloorSpringTest {
 
         assertThat(res.getStatus()).isEqualTo(403);
         assertThat(res.getContentAsString()).doesNotContain("no-engine-role");
+    }
+
+    /** #771: a fleet grant is an administrative power, not read access — the floor must not widen. */
+    @ParameterizedTest
+    @MethodSource("fleetReads")
+    void aFleetGrantWithoutAnEngineRoleIsStillRefused(String route) throws Exception {
+        MockHttpServletResponse res = call(route, oidc(ADMIN_ONLY));
+
+        assertThat(res.getStatus()).as(route).isEqualTo(403);
+        assertThat(mapper.readTree(res.getContentAsString()).path("code").asText())
+                .as(route)
+                .isEqualTo("no-engine-role");
     }
 }

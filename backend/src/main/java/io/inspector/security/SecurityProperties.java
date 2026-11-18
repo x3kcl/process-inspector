@@ -35,7 +35,9 @@ public record SecurityProperties(
          * absence is a BOOT WARNING (a prod deploy that pages nobody on an ACCESS_ADMIN change or a
          * break-glass login should be a loud config gap, not silent). E.g. INSPECTOR_ALERT_WEBHOOK_URL.
          */
-        String alertWebhookUrlRef) {
+        String alertWebhookUrlRef,
+        /* OIDC group that confers the fleet METRICS grant (#772). Blank = no group confers it. */
+        String metricsGroup) {
 
     public String devPasswordOrDefault() {
         return devPassword != null && !devPassword.isBlank() ? devPassword : "dev";
@@ -53,6 +55,11 @@ public record SecurityProperties(
     /** OIDC group name conferring REGISTRY_ADMIN; default {@code registry-admin}. */
     public String registryAdminGroupOrDefault() {
         return registryAdminGroup != null && !registryAdminGroup.isBlank() ? registryAdminGroup : "registry-admin";
+    }
+
+    /** OIDC group name conferring METRICS, or null when unset (no default: #772). */
+    public String metricsGroupOrNull() {
+        return metricsGroup != null && !metricsGroup.isBlank() ? metricsGroup : null;
     }
 
     /** Whether search/triage reads are scope-filtered (S2, R-SAFE-17); default off (see field doc). */

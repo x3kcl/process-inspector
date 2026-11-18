@@ -33,7 +33,7 @@ class FileMappingSourceTest {
                       engine-id: orders-prod
                 """);
         SecurityProperties security =
-                new SecurityProperties(null, file.toString(), 60, null, "registry-admin", null, null);
+                new SecurityProperties(null, file.toString(), 60, null, "registry-admin", null, null, null);
         ScopeMappingService scope = new ScopeMappingService(
                 security, Clock.systemUTC(), Mockito.mock(io.inspector.audit.AuditService.class));
         MappingProperties mapping = new MappingProperties(null, "access-admins");
@@ -74,12 +74,29 @@ class FileMappingSourceTest {
         Path file = dir.resolve("scopes.yml");
         Files.writeString(file, "groups: {}\n");
         SecurityProperties security =
-                new SecurityProperties(null, file.toString(), 60, null, "registry-admin", null, null);
+                new SecurityProperties(null, file.toString(), 60, null, "registry-admin", null, null, null);
         ScopeMappingService scope = new ScopeMappingService(
                 security, Clock.systemUTC(), Mockito.mock(io.inspector.audit.AuditService.class));
         var s = new FileMappingSource(scope, security, new MappingProperties(null, null));
         assertThat(s.allFleetGrants())
                 .singleElement()
                 .satisfies(r -> assertThat(r.grant()).isEqualTo(FleetGrant.REGISTRY_ADMIN));
+    }
+
+    @Test
+    void theOptionalMetricsGroupConfersMetricsAndIsListed(@TempDir Path dir) throws Exception {
+        Path file = dir.resolve("scopes.yml");
+        Files.writeString(file, "groups: {}\n");
+        SecurityProperties security =
+                new SecurityProperties(null, file.toString(), 60, null, "registry-admin", null, null, "scrapers");
+        ScopeMappingService scope = new ScopeMappingService(
+                security, Clock.systemUTC(), Mockito.mock(io.inspector.audit.AuditService.class));
+        var s = new FileMappingSource(scope, security, new MappingProperties(null, null));
+        assertThat(s.fleetGrantsForGroups(List.of("scrapers"))).containsExactly(FleetGrant.METRICS);
+        assertThat(s.allFleetGrants()).anySatisfy(r -> {
+            assertThat(r.group()).isEqualTo("scrapers");
+            assertThat(r.grant()).isEqualTo(FleetGrant.METRICS);
+            assertThat(r.source()).isEqualTo("config");
+        });
     }
 }

@@ -73,6 +73,9 @@ public class MappingSeeder implements ApplicationRunner {
         List<GroupFleetGrantEntity> fleet = new ArrayList<>();
         fleet.add(new GroupFleetGrantEntity(
                 security.registryAdminGroupOrDefault(), FleetGrant.REGISTRY_ADMIN, "file-seed", now));
+        if (security.metricsGroupOrNull() != null) {
+            fleet.add(new GroupFleetGrantEntity(security.metricsGroupOrNull(), FleetGrant.METRICS, "file-seed", now));
+        }
 
         store.seed(ladder, fleet);
 

@@ -8,6 +8,8 @@ package io.inspector.security.mapping;
  *   <li>{@code REGISTRY_ADMIN} — repoints the credential vault (engines, v2 Registry CRUD).</li>
  *   <li>{@code ACCESS_ADMIN} — the apex: defines who holds every grant, INCLUDING the two fleet
  *       grants themselves. Higher-privilege than any tier-3 verb and than {@code REGISTRY_ADMIN}.</li>
+ *   <li>{@code METRICS} — reads the metrics-bearing actuator endpoints ({@code /actuator/prometheus},
+ *       {@code /actuator/info}) and nothing else: a scraper account's grant (#772).</li>
  * </ul>
  *
  * A fleet grant must never read as a {@code (role, engine, tenant)} ladder row — hence its own
@@ -15,5 +17,6 @@ package io.inspector.security.mapping;
  */
 public enum FleetGrant {
     REGISTRY_ADMIN,
-    ACCESS_ADMIN
+    ACCESS_ADMIN,
+    METRICS
 }

@@ -10,7 +10,8 @@ scrape_configs:
   - job_name: process-inspector
     metrics_path: /actuator/prometheus
     basic_auth:
-      username: viewer
+      # The METRICS-only dev user (#772); `viewer` gets 403 on /actuator/prometheus.
+      username: metrics
       password_file: /etc/prometheus/scrape-password
     static_configs:
       - targets: ["backend:8080"]
