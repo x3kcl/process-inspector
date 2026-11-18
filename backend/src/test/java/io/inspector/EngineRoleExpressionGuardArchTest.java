@@ -45,8 +45,13 @@ class EngineRoleExpressionGuardArchTest {
 
     @Test
     void everyEngineScopedRouteCarriesARoleExpression() {
+        assertRoleExpressions(MAIN, EXCEPTIONS.keySet());
+    }
+
+    /** The routes of {@code classes} lacking a role expression are exactly {@code expected}. */
+    static void assertRoleExpressions(JavaClasses classes, Set<String> expected) {
         Map<String, String> noRole = new TreeMap<>();
-        for (JavaClass controller : MAIN) {
+        for (JavaClass controller : classes) {
             if (!controller.isAnnotatedWith(RestController.class)) {
                 continue;
             }
@@ -68,7 +73,7 @@ class EngineRoleExpressionGuardArchTest {
                 }
             }
         }
-        assertThat(noRole.keySet()).containsExactlyInAnyOrderElementsOf(EXCEPTIONS.keySet());
+        assertThat(noRole.keySet()).containsExactlyInAnyOrderElementsOf(expected);
     }
 
     private static boolean holdsReadScope(String owner) {
