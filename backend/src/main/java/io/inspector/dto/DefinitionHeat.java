@@ -51,7 +51,11 @@ public record DefinitionHeat(
         NONE
     }
 
-    public record DropReasons(int tooManyRows, int readFailed) {}
+    /**
+     * Why instances were dropped: more rows than one page (unreadable in full), the read failed,
+     * or the instance has no activity row while others in the sample do.
+     */
+    public record DropReasons(int tooManyRows, int readFailed, int noActivityHistory) {}
 
     /** Timing fields are null when no execution of the node was timed (all unfinished). */
     public record NodeHeat(

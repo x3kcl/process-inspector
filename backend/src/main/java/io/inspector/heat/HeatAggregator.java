@@ -118,7 +118,7 @@ public final class HeatAggregator {
                 sampled,
                 s.finishedTotal(),
                 dropped,
-                new DefinitionHeat.DropReasons(tooManyRows, readFailed),
+                new DefinitionHeat.DropReasons(tooManyRows, readFailed, 0),
                 s.oldestEnd(),
                 s.newestEnd(),
                 dropped > 0,
