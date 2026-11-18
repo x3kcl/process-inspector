@@ -4849,6 +4849,10 @@ button.skip-link {
   font-size: 10px;
   line-height: 1.2;
   padding: 0 3px;
+  /* The overlay anchors its top-left at (right 4, bottom 4); the translate pulls the badge's
+     bottom-right corner there, i.e. inside the shape (DEFINITION-HEATMAP.md §5). */
+  transform: translate(-100%, -100%);
+  /* One line: a wrapped badge covers the node label. Wider than a small task, it overhangs left. */
   white-space: nowrap;
 }
 .heat-badge-dominant {
