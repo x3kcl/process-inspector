@@ -29,7 +29,7 @@ spring:
             redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
         provider:
           oidc:
-            issuer-uri: ${INSPECTOR_OIDC_ISSUER_URI}
+            issuer-uri: ${inspector.security.oidc.issuer}
 
 inspector:
   security:
@@ -64,5 +64,5 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: ${INSPECTOR_OIDC_ISSUER_URI}
+          issuer-uri: ${inspector.security.oidc.issuer}
           audiences: ${INSPECTOR_MCP_AUDIENCE:inspector-mcp}

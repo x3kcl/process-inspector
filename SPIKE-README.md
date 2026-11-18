@@ -42,6 +42,7 @@ mvn -o test -Dtest='McpSpike*Test' -Dspotless.check.skip=true
 ```
 
 - `McpSpikeDevChainSpringTest` — dev chain: principal, `@PreAuthorize` honoured/admitted, 401, role floor
+- `OidcKeycloakIT` (existing, SPA oidc chain) still green with the /mcp chain in front: `mvn -o verify -Dskip.surefire.tests=true -Dit.test=OidcKeycloakIT`
 - `McpSpikeOidcChainSpringTest` — oidc profile: scoped VIEWER, issuer pinning, role floor, PRM, 401 challenge
 - `McpSpikeRealServerThreadTest` — real Tomcat: tool runs on the virtual request thread
 - `McpSpikeWithoutDedicatedChainSpringTest` — what happens without a dedicated chain (CSRF 403)
