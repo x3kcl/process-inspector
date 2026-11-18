@@ -66,5 +66,31 @@ check "marker for an older head keeps watching" 3 no --watch 7
 fixture success false true; echo '[{"body":"x\nmq-red-first:abc"}]' > "$T/comments.json"
 check "status shows refusal" 0 no --status 7
 grep -q 'refused: mq-red-first:abc' <<<"$out" || { echo "FAIL status lacks refused marker"; fail=1; }
+# #780: every pull_request-event run on the head gates the label; the queue's mq-red / mq-verdict refusals end --watch
+# lanes <ci-conclusion> <supply-chain-conclusion> [<supply-chain-status>]: two pull_request runs plus a non-gating dispatch run
+lanes() {
+  printf '{"workflow_runs":[{"id":1,"name":"ci","event":"pull_request","path":".github/workflows/ci.yml","status":"completed","conclusion":"%s"},{"id":2,"name":"supply-chain-pr","event":"pull_request","path":".github/workflows/supply-chain-pr.yml","status":"%s","conclusion":"%s"},{"id":3,"name":"nightly","event":"workflow_dispatch","path":".github/workflows/nightly.yml","status":"completed","conclusion":"failure"}]}' \
+    "$1" "${3:-completed}" "$2" > "$T/runs.json"
+}
+fixture success false false; lanes success failure; check "ci green + supply-chain-pr red is refused" 1 no 7
+grep -q 'supply-chain-pr' <<<"$out" || { echo "FAIL red lane not named"; fail=1; }
+fixture success false false; lanes success success; check "all pull_request lanes green is labelled" 0 yes 7
+fixture success false false; lanes success null in_progress; check "a lane in progress is not green yet" 1 no 7
+fixture success false true; lanes success failure; echo '[{"body":"merge queue: head abc is red on PR lane supply-chain-pr — u. mq-red:abc"}]' > "$T/comments.json"
+check "mq-red marker for head exits 1" 1 no --watch 7
+grep -q 'red on PR lane supply-chain-pr' <<<"$out" || { echo "FAIL mq-red comment not printed"; fail=1; }
+fixture success false true; echo '[{"body":"merge queue: lane-red\n<!-- mq-verdict {\"v\":1,\"code\":\"lane-red\",\"head\":\"abc\",\"state\":\"refused\"} -->"}]' > "$T/comments.json"
+check "mq-verdict refused for head exits 1" 1 no --watch 7
+grep -q 'lane-red' <<<"$out" || { echo "FAIL verdict comment not printed"; fail=1; }
+fixture success false true; echo '[{"body":"old\nmq-red:def"}]' > "$T/comments.json"
+check "mq-red for an older head keeps watching" 3 no --watch 7
+fixture success false true; echo '[{"body":"x\n<!-- mq-verdict {\"v\":1,\"code\":\"lane-red\",\"head\":\"def\",\"state\":\"refused\"} -->"}]' > "$T/comments.json"
+check "verdict for an older head keeps watching" 3 no --watch 7
+fixture success false true; echo '[{"body":"x\n<!-- mq-verdict {\"v\":1,\"code\":\"lane-red\",\"head\":\"abc\",\"state\":\"refused\"} -->"}]' > "$T/comments.json"
+check "status shows verdict code" 0 no --status 7
+grep -q 'refused: lane-red' <<<"$out" || { echo "FAIL status lacks verdict code"; fail=1; }
+fixture success false true; echo '[{"body":"x\nmq-red:abc"}]' > "$T/comments.json"
+check "status shows mq-red" 0 no --status 7
+grep -q 'refused: mq-red:abc' <<<"$out" || { echo "FAIL status lacks mq-red marker"; fail=1; }
 [[ $fail == 0 ]] && echo "pr-queue-selftest: ok"
 exit $fail
