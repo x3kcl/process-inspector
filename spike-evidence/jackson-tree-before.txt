@@ -1,0 +1,8 @@
+io.inspector:process-inspector-backend:jar:0.1.0-SNAPSHOT
++- org.flywaydb:flyway-core:jar:12.4.0:compile
+|  \- tools.jackson.core:jackson-databind:jar:3.1.7:compile
+|     +- com.fasterxml.jackson.core:jackson-annotations:jar:2.21:compile
+|     \- tools.jackson.core:jackson-core:jar:3.1.7:compile
+\- net.logstash.logback:logstash-logback-encoder:jar:8.1:compile
+   \- com.fasterxml.jackson.core:jackson-databind:jar:2.21.7:compile
+      \- com.fasterxml.jackson.core:jackson-core:jar:2.21.7:compile

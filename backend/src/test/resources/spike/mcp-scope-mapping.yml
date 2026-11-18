@@ -1,0 +1,12 @@
+# SPIKE #492 S0 — group→scope mapping for the /mcp oidc-chain tests.
+groups:
+  team-a-viewers:
+    - role: VIEWER
+      engine-id: probe-dev
+  orders-l1:
+    - role: VIEWER
+      engine-id: engine-a
+  flowable-admins:
+    - role: ADMIN
+      engine-id: "*"
+      tenant-id: "*"

@@ -1,0 +1,17 @@
+SPIKE-AS-METADATA image=quay.io/keycloak/keycloak:26.8.2 code_challenge_methods_supported=["plain","S256"] registration_endpoint="http://localhost:34073/realms/mcp-spike/clients-registrations/openid-connect" device_authorization_endpoint="http://localhost:34073/realms/mcp-spike/protocol/openid-connect/auth/device" client_id_metadata_document_supported= authorization_response_iss_parameter_supported=true
+SPIKE-DEVICE -> 200 {"device_code":"<redacted>","user_code":"TIRJ-MOWT","verification_uri":"http://localhost:34073/realms/mcp-spike/device","verification_uri_complete":"http://localhost:34073/realms/mcp-spike/device?user_code=TIRJ-MOWT","expires_in":600,"interval":5}
+SPIKE-EXCHANGE POST /mcp {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}} Authorization=<none>
+  -> 401 WWW-Authenticate=Bearer resource_metadata="http://localhost:41891/.well-known/oauth-protected-resource/mcp"
+SPIKE-EXCHANGE GET /.well-known/oauth-protected-resource/mcp
+  -> 200
+  {"resource":"http://localhost:41891/mcp","bearer_methods_supported":["header"],"tls_client_certificate_bound_access_tokens":false,"authorization_servers":["http://localhost:34073/realms/mcp-spike"],"scopes_supported":["openid"]}
+SPIKE-EXCHANGE POST /mcp {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}} Authorization=Bearer <redacted>
+  -> 401 WWW-Authenticate=Bearer error="invalid_token", error_description="An error occurred while attempting to decode the Jwt: The aud claim is not valid", error_uri="https://tools.ietf.org/html/rfc6750#section-3.1", resource_metadata="http://localhost:41891/.well-known/oauth-protected-resource/mcp"
+[ERROR] Tests run: 6, Failures: 3, Errors: 0, Skipped: 0, Time elapsed: 62.34 s <<< FAILURE! -- in io.inspector.spike.mcp.McpSpikeKeycloakIT
+[ERROR] io.inspector.spike.mcp.McpSpikeKeycloakIT.aliceWithTheMcpScopeGetsAnAudienceBoundTokenAndSeesHerEngineOnly -- Time elapsed: 1.635 s <<< FAILURE!
+java.lang.AssertionError: no redirect after login: 400
+[ERROR] io.inspector.spike.mcp.McpSpikeKeycloakIT.aTokenWithoutTheMcpAudienceIsRejected -- Time elapsed: 0.165 s <<< FAILURE!
+java.lang.AssertionError: no redirect after login: 400
+[ERROR] io.inspector.spike.mcp.McpSpikeKeycloakIT.aNoRoleUserTokenGetsTheRoleFloorRefusal -- Time elapsed: 0.123 s <<< FAILURE!
+java.lang.AssertionError: no redirect after login: 400
+[ERROR] Tests run: 6, Failures: 3, Errors: 0, Skipped: 0

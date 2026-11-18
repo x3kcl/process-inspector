@@ -1,0 +1,20 @@
+== anonymous tools/list
+HTTP/1.1 401 
+-> HTTP 401
+== viewer initialize (stateless)
+{"jsonrpc":"2.0","id":0,"result":{"protocolVersion":"2025-11-25","capabilities":{"completions":{},"prompts":{"listChanged":false},"resources":{"subscribe":false,"listChanged":false},"tools":{"listChanged":false}},"serverInfo":{"name":"process-inspector-spike","version":"0.0.0-spike"}}}
+-> HTTP 200
+== viewer tools/call whoami_engines
+{"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"{\"thread\":\"tomcat-handler-8\",\"virtual\":true,\"principal\":\"viewer\",\"authType\":\"UsernamePasswordAuthenticationToken\",\"scopeEnforced\":false,\"engines\":{\"engine-a\":\"VIEWER\",\"engine-b\":\"VIEWER\",\"engine-7\":\"VIEWER\"}}"}],"isError":false}}
+-> HTTP 200
+== viewer tools/call spike_admin_only
+{"jsonrpc":"2.0","id":2,"result":{"content":[{"type":"text","text":"Access Denied\nAccess Denied"}],"isError":true}}
+-> HTTP 200
+== viewer whoami with a foreign Origin header
+{"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"text","text":"{\"thread\":\"tomcat-handler-10\",\"virtual\":true,\
+-> HTTP 200
+== viewer GET /mcp
+-> HTTP 405
+== viewer malformed JSON body
+{"jsonRpcError":{"code":-32600,"message":"Invalid message format"},"cause":null,"stackTrace":[{"classLoaderName":null,"moduleName":null,"moduleVersion":null,"methodName":"build","fileName":"McpError.java","lineNumber":81,"className":"io.modelcontextprotocol.spec.McpError$Builder","nativeMethod":false},{"classLoaderName":null,"moduleName":null,"moduleVersion":null,"methodName":"handlePost","fileName":"WebMvcStatelessServerTransport.java","lineNumber":204,"className":"org.springframework.ai.mcp.server.webmvc.transport.WebMvcStatelessServerTransport","nativeMethod":false},{"classLoaderName":null,"moduleName":null,"moduleVersion":null,"methodName":"handle","fileName":"HandlerFunctionAdapter.java …[truncated; full Java stack trace follows in the real body]
+-> HTTP 400

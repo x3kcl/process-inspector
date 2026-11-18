@@ -1,0 +1,13 @@
+io.inspector:process-inspector-backend:jar:0.1.0-SNAPSHOT
+\- org.springframework.ai:spring-ai-starter-mcp-server-webmvc:jar:2.0.2:compile
+   +- org.springframework.ai:spring-ai-autoconfigure-mcp-server-webmvc:jar:2.0.2:compile
+   |  \- org.springframework.ai:spring-ai-autoconfigure-mcp-server-common:jar:2.0.2:compile
+   +- org.springframework.ai:spring-ai-mcp:jar:2.0.2:compile
+   |  +- io.modelcontextprotocol.sdk:mcp:jar:2.1.0:compile
+   |  |  \- io.modelcontextprotocol.sdk:mcp-json-jackson3:jar:2.1.0:compile
+   |  \- org.springframework.ai:spring-ai-model:jar:2.0.2:compile
+   |     +- org.springframework.ai:spring-ai-commons:jar:2.0.2:compile
+   |     \- org.springframework.ai:spring-ai-template-st:jar:2.0.2:compile
+   +- org.springframework.ai:spring-ai-mcp-annotations:jar:2.0.2:compile
+   \- org.springframework.ai:mcp-spring-webmvc:jar:2.0.2:compile
+      \- io.modelcontextprotocol.sdk:mcp-core:jar:2.1.0:compile

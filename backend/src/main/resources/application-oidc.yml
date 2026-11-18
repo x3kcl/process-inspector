@@ -55,3 +55,14 @@ inspector:
       # Entra groups-overage: false = detect + legibly fail (the floor). Enabling it requires a
       # deployed OverageGroupResolver (permissioned Graph add-on) — out of S1 scope.
       resolve-overage: ${INSPECTOR_OIDC_RESOLVE_OVERAGE:false}
+
+# SPIKE #492 S0 (NOT FOR MERGE): /mcp as an OAuth 2 resource server — same issuer as the SPA
+# login, tokens must carry the Inspector's MCP audience (RFC 8707 resource → `aud`).
+---
+spring:
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${INSPECTOR_OIDC_ISSUER_URI}
+          audiences: ${INSPECTOR_MCP_AUDIENCE:inspector-mcp}
