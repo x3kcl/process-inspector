@@ -2753,7 +2753,7 @@ export interface components {
             nodes?: components["schemas"]["NodeHeat"][];
             /** Format: date-time */
             oldestEnd?: string;
-            outcomes?: components["schemas"]["Outcome"][];
+            outcomes?: components["schemas"]["HeatOutcome"][];
             partial?: boolean;
             /** Format: date-time */
             refreshThrottledUntil?: string;
@@ -3131,6 +3131,14 @@ export interface components {
             role?: string;
             tenantId?: string;
             type?: string;
+        };
+        HeatOutcome: {
+            /** Format: int32 */
+            count?: number;
+            endEventId?: string;
+            name?: string;
+            /** Format: double */
+            pct?: number;
         };
         HierarchyNode: {
             businessKey?: string;

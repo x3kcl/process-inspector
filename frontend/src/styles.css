@@ -4810,3 +4810,82 @@ button.skip-link {
   margin: 48px auto;
   padding: 0 16px;
 }
+
+/* ---- definition heat tab (#785): figure + tier word in the badge, tier border on the node ---- */
+.heat-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  margin: 8px 0;
+}
+.heat-partial-badge {
+  display: inline-block;
+  padding: 0 6px;
+  border: 1px dashed var(--color-ink);
+  border-radius: 2px;
+  color: var(--color-ink);
+  font-size: 12px;
+}
+.diagram-canvas .marker-heat-dominant .djs-visual > :first-child {
+  stroke: var(--color-ink) !important;
+  stroke-width: 4px !important;
+}
+.diagram-canvas .marker-heat-warm .djs-visual > :first-child {
+  stroke: var(--color-ink) !important;
+  stroke-width: 2px !important;
+}
+.diagram-canvas .marker-heat-cool .djs-visual > :first-child {
+  stroke: var(--color-ink) !important;
+  stroke-width: 2px !important;
+  stroke-dasharray: 4 3 !important;
+}
+.heat-badge {
+  display: inline-block;
+  background: var(--color-page-bg);
+  color: var(--color-ink);
+  border: 1px solid var(--color-ink);
+  border-radius: 2px;
+  font-size: 10px;
+  line-height: 1.2;
+  padding: 0 3px;
+  /* The overlay anchors its top-left at (right 4, bottom 4); the translate pulls the badge's
+     bottom-right corner there, i.e. inside the shape (DEFINITION-HEATMAP.md §5). */
+  transform: translate(-100%, -100%);
+  /* One line: a wrapped badge covers the node label. Wider than a small task, it overhangs left. */
+  white-space: nowrap;
+}
+.heat-badge.glyph-above {
+  /* Centred above an event's circle, two short lines at most: clear of the gateway and the
+     next shape on either side (the event's own label sits below it). */
+  transform: translate(-50%, -100%);
+  white-space: normal;
+  width: max-content;
+  max-width: 120px;
+  font-size: 9px;
+  line-height: 1.15;
+  text-align: center;
+}
+.heat-badge-dominant {
+  border-width: 2px;
+}
+.heat-badge-cool {
+  border-style: dashed;
+}
+.heat-table tr[aria-selected='true'] {
+  outline: 2px solid var(--color-info);
+  outline-offset: -2px;
+}
+.heat-funnel {
+  list-style: none;
+  padding: 0;
+}
+.heat-funnel li {
+  margin: 4px 0;
+}
+.heat-funnel-bar {
+  display: block;
+  height: 6px;
+  background: var(--color-text-secondary);
+  border-radius: 2px;
+}

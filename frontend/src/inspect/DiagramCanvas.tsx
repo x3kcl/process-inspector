@@ -37,6 +37,10 @@ export interface DiagramMarkers {
   blockerActivityIds?: string[]
   warningActivityIds?: string[]
   mappedActivityIds?: string[]
+  /** Definition heat (#785): badge ids by tier; text per id comes in through `glyphTexts`. */
+  heatDominantActivityIds?: string[]
+  heatWarmActivityIds?: string[]
+  heatCoolActivityIds?: string[]
 }
 
 interface Props {
@@ -62,6 +66,8 @@ interface Props {
    * nodes, duration badges. Absent (timeline pending or failed) = the plain markers only.
    */
   execution?: ExecutionOverlay
+  /** Per-id badge text for a kind (e.g. the heat badges); the execution overlay adds its own. */
+  glyphTexts?: GlyphTexts
 }
 
 interface SelectionEvent {
@@ -99,6 +105,7 @@ export function DiagramCanvas({
   pickerSourceIds,
   pickerTargetIds,
   execution,
+  glyphTexts: extraTexts,
 }: Props) {
   const frameRef = useRef<HTMLDivElement | null>(null)
   const hostRef = useRef<HTMLDivElement | null>(null)
@@ -126,7 +133,7 @@ export function DiagramCanvas({
 
   const { sets, texts } = useMemo(() => {
     const base: MarkerSets = { ...markers, pickerSourceIds, pickerTargetIds }
-    const glyphTexts: GlyphTexts = {}
+    const glyphTexts: GlyphTexts = { ...extraTexts }
     if (overlay === undefined) return { sets: base, texts: glyphTexts }
     // Active and dead-letter markers win over completed / armed on the same node.
     const live = new Set([...markers.activeActivityIds, ...markers.deadLetterActivityIds])
@@ -149,7 +156,7 @@ export function DiagramCanvas({
       },
       texts: glyphTexts,
     }
-  }, [markers, pickerSourceIds, pickerTargetIds, overlay])
+  }, [markers, pickerSourceIds, pickerTargetIds, overlay, extraTexts])
   const kinds = useMemo(() => presentKinds(sets), [sets])
 
   // One viewer per mount.
@@ -347,10 +354,16 @@ function paintMarkers(
         if (kind.glyph !== undefined) {
           const text = texts[kind.key]?.get(id)
           const label = text === undefined ? kind.label : `${kind.label}: ${text}`
+          const element = viewer.get<ElementRegistry>('elementRegistry').get(id) as
+            { type?: string } | undefined
+          const type = element?.type
+          const eventPosition =
+            type?.endsWith('Event') === true ? kind.glyph.eventPosition : undefined
+          const onEvent = eventPosition !== undefined
           overlayIds.push(
             overlays.add(id, 'diagram-marker', {
-              position: kind.glyph.position,
-              html: `<span class="${kind.glyph.className}" role="img" aria-label="${label}" title="${label}">${text ?? kind.glyph.text}</span>`,
+              position: eventPosition ?? kind.glyph.position,
+              html: `<span class="${kind.glyph.className}${onEvent ? ' glyph-above' : ''}" role="img" aria-label="${label}" title="${label}">${text ?? kind.glyph.text}</span>`,
             }),
           )
         }

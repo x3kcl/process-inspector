@@ -15,6 +15,7 @@ import { GuardFields } from '../components/GuardFields'
 import { ModalShell } from '../components/ModalShell'
 import { DiagramCanvas } from '../inspect/DiagramCanvas'
 import { Breadcrumbs } from '../shell/Breadcrumbs'
+import { HeatTab } from './heat/HeatTab'
 
 type Detail = components['schemas']['DefinitionDetailResponse']
 type Xml = components['schemas']['DefinitionXmlResponse']
@@ -25,7 +26,7 @@ type Diff = components['schemas']['BpmnDiffResponse']
 export function DefinitionDetailPage() {
   const { engineId = '', definitionId = '' } = useParams()
   const id = decodeURIComponent(definitionId)
-  const [tab, setTab] = useState<'diagram' | 'xml' | 'subscriptions' | 'jobs' | 'compare'>(
+  const [tab, setTab] = useState<'diagram' | 'xml' | 'subscriptions' | 'jobs' | 'compare' | 'heat'>(
     'diagram',
   )
   const [against, setAgainst] = useState('')
@@ -151,7 +152,7 @@ export function DefinitionDetailPage() {
         )}
       </p>
       <div className="tab-bar" role="tablist">
-        {(['diagram', 'xml', 'subscriptions', 'jobs', 'compare'] as const).map((name) => (
+        {(['diagram', 'xml', 'subscriptions', 'jobs', 'compare', 'heat'] as const).map((name) => (
           <button
             key={name}
             type="button"
@@ -172,6 +173,9 @@ export function DefinitionDetailPage() {
         <Subscriptions data={subs.data} engineId={engineId} error={subs.error} />
       )}
       {tab === 'jobs' && <JobLanes data={jobs.data} error={jobs.error} />}
+      {tab === 'heat' && (
+        <HeatTab engineId={engineId} currentId={id} versions={row?.versions ?? []} />
+      )}
       {tab === 'compare' && (
         <Compare
           versions={row?.versions ?? []}
