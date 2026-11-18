@@ -61,6 +61,18 @@ shedding load"`, with the retry-after). The **triage aggregations are cached ~15
 the cache, rate-limited. Variable list responses **cap value byte size** (truncated preview
 + on-demand full fetch) so blob variables exhaust neither browser nor engine.
 
+**Lanes.** The bulkhead + breaker pair is keyed per engine AND per lane (`CallPriority`), so
+a heavy or background caller degrades itself, never interactive search: `INTERACTIVE`
+(`engine`, 8 permits), `BACKGROUND` (`{id}:sampler`, 2), `DEEP_PAGE` (`{id}:deep-page`, 2,
+§2.4), `HOUSEKEEPING` (`{id}:housekeeping`, 1) and **`AGGREGATE` (`{id}:aggregate`, 2 permits,
+5 s wait, its own breaker; #784)**. `AGGREGATE` carries the definition heat gather
+([DEFINITION-HEATMAP.md](DEFINITION-HEATMAP.md) §4): one user-opened view is 200–1 000 indexed
+per-instance reads, so it must never take the interactive permits, and reusing `sampler` or
+`deep-page` would couple unrelated degradations. The gather runs two reads at a time (the
+permits); a read that fails or waits past 5 s drops that instance and is counted
+(`readFailed`), never retried beyond what a read lane does. Its result is cached 10 minutes per
+(engine, definition, N), single-flight; Refresh bypasses it at most once per 60 s per key.
+
 ### 2.3 Semantics — the status join (v2, corrected)
 
 Flowable has no `FAILED` instance state; failure lives in job queues. Status is derived in
