@@ -313,4 +313,17 @@ class DefinitionHeatApiSpringTest {
         assertThat(second.get().asOf()).isEqualTo(first.get().asOf());
         assertThat(List.of(first.get().cached(), second.get().cached())).containsExactlyInAnyOrder(false, true);
     }
+
+    // ---- the refresh throttle is per definition VERSION (#784: "once per 60 s per definition
+    // version"), so a distinct ?n= cannot buy a second refresh inside the minute ----------------
+
+    @Test
+    void aRefreshAtAnotherSampleSizeInsideTheMinuteIsThrottled() throws Exception {
+        ok("/api/definitions/probe-dev/d-throttle-n/heat?n=10&refresh=true");
+        JsonNode otherN = ok("/api/definitions/probe-dev/d-throttle-n/heat?n=11&refresh=true");
+
+        assertThat(otherN.path("refreshThrottledUntil").isTextual())
+                .as("refresh at n=11 right after one at n=10 must be refused")
+                .isTrue();
+    }
 }
