@@ -1610,9 +1610,10 @@ and would rewrite working M1/M2 code for no capability gain); Go/FastAPI/Kotlin 
   words); every glyph is `role="img"` + `aria-label`; an unrecorded route (#729) is said
   in a text notice, not by the missing stroke alone.
   Definition heat (#785, Heat tab): a text badge inside the shape (bottom 4, right 4, clear of
-  every glyph above; tasks, sub-processes, call activities, and any node an event gateway armed
-  without firing) carries the figure (`avg 1.2 s · 62 %`), the tier word (`dominant` / `warm`)
-  and `armed in N, taken in M`; the tier is also a border (heavy solid, solid, dashed). The
+  every glyph above; tasks, sub-processes, call activities; on a catch event an event gateway
+  armed without firing it sits centred above the circle, at most 120 px wide) carries the
+  figure (`avg 1.2 s · 62 %`), the tier word (`dominant` / `warm`) and `armed in N, taken in
+  M`; the tier is also a border (heavy solid, solid, dashed). The
   sample size, drops with reasons, `asOf`, the partial badge, and the no-route / no-activity-
   history / unreadable-model / no-finished-instances states are all text; a refused refresh
   shows the server's `refreshThrottledUntil`.

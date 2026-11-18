@@ -13,7 +13,13 @@ export interface MarkerKind {
   /** Legend swatch outline — mirrors the marker's CSS rule; absent = badge-only kind. */
   stroke?: { color: string; width: number; dash?: string; fill?: string }
   /** Overlay badge: glyph text, its CSS classes and position on the shape. */
-  glyph?: { text: string; className: string; position: OverlayAttrs['position'] }
+  glyph?: {
+    text: string
+    className: string
+    position: OverlayAttrs['position']
+    /** On an event (a 36 px circle): where the badge goes instead, with `glyph-above`. */
+    eventPosition?: OverlayAttrs['position']
+  }
   /** aria-label + title of the overlay badge. */
   label: string
   /** Legend wording (kept distinct from page text such as the Compare tab's own legend). */
@@ -182,6 +188,7 @@ export const MARKER_KINDS: MarkerKind[] = [
   },
   // #785 definition heat: text badge inside the shape (bottom 4, right 4: clear of every glyph
   // above) + a border that differs by tier. The figure and the tier word are in the badge text.
+  // An armed catch event is too small for it: there it sits centred above the circle.
   {
     key: 'heatDominantActivityIds',
     markerClass: 'marker-heat-dominant',
@@ -190,6 +197,7 @@ export const MARKER_KINDS: MarkerKind[] = [
       text: 'heat',
       className: 'heat-badge heat-badge-dominant',
       position: { bottom: 4, right: 4 },
+      eventPosition: { top: -4, left: 18 },
     },
     label: 'heat, dominant',
     legend: 'heat badge, dominant: ≥ 40 % of measured time (heavy solid border)',
@@ -202,6 +210,7 @@ export const MARKER_KINDS: MarkerKind[] = [
       text: 'heat',
       className: 'heat-badge heat-badge-warm',
       position: { bottom: 4, right: 4 },
+      eventPosition: { top: -4, left: 18 },
     },
     label: 'heat, warm',
     legend: 'heat badge, warm: 10–40 % of measured time (solid border)',
@@ -214,6 +223,7 @@ export const MARKER_KINDS: MarkerKind[] = [
       text: 'heat',
       className: 'heat-badge heat-badge-cool',
       position: { bottom: 4, right: 4 },
+      eventPosition: { top: -4, left: 18 },
     },
     label: 'heat, cool',
     legend: 'heat badge, cool: under 10 % of measured time, or armed only (dashed border)',

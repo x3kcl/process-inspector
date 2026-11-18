@@ -30,13 +30,13 @@ export function HeatTab({ engineId, currentId, versions }: Props) {
   const [selected, setSelected] = useState<string | undefined>()
   const client = useQueryClient()
   const key = ['definition-heat', engineId, versionId, n]
-  const fetchHeat = async (refresh: boolean): Promise<Heat> => {
+  const fetchHeat = async (version: string, size: number, refresh: boolean): Promise<Heat> => {
     const { data, error, response } = await api.GET(
       '/api/definitions/{engineId}/{definitionId}/heat',
       {
         params: {
-          path: { engineId, definitionId: versionId },
-          query: refresh ? { n, refresh: true } : { n },
+          path: { engineId, definitionId: version },
+          query: refresh ? { n: size, refresh: true } : { n: size },
         },
       },
     )
@@ -47,13 +47,17 @@ export function HeatTab({ engineId, currentId, versions }: Props) {
     queryKey: key,
     staleTime: 5 * 60_000,
     refetchOnWindowFocus: false,
-    queryFn: () => fetchHeat(false),
+    // A refused gather is not cached server-side: a retry would be another full engine read.
+    retry: false,
+    queryFn: () => fetchHeat(versionId, n, false),
   })
+  // The answer is filed under the version and size it was asked for, whatever is picked by then.
   const refresh = useMutation({
     retry: false,
-    mutationFn: () => fetchHeat(true),
-    onSuccess: (data) => {
-      client.setQueryData(key, data)
+    mutationFn: (asked: { version: string; size: number }) =>
+      fetchHeat(asked.version, asked.size, true),
+    onSuccess: (data, asked) => {
+      client.setQueryData(['definition-heat', engineId, asked.version, asked.size], data)
     },
   })
   const xml = useQuery({
@@ -82,6 +86,7 @@ export function HeatTab({ engineId, currentId, versions }: Props) {
             onChange={(event) => {
               setVersionId(event.target.value)
               setSelected(undefined)
+              refresh.reset()
             }}
           >
             {versions.map((version) => (
@@ -98,6 +103,7 @@ export function HeatTab({ engineId, currentId, versions }: Props) {
             value={n}
             onChange={(event) => {
               setN(Number(event.target.value))
+              refresh.reset()
             }}
           >
             {HEAT_PRESETS.map((preset) => (
@@ -111,17 +117,22 @@ export function HeatTab({ engineId, currentId, versions }: Props) {
           type="button"
           disabled={refresh.isPending}
           onClick={() => {
-            refresh.mutate()
+            refresh.mutate({ version: versionId, size: n })
           }}
         >
           Refresh
         </button>
       </div>
       {failure != null && <p role="alert">{refusalMessage(failure)}</p>}
+      {heat.isPending && (
+        <p role="status" className="muted">
+          Reading heat from the engine…
+        </p>
+      )}
       {data?.refreshThrottledUntil != null && (
         <p role="status" className="muted">
-          Refresh is throttled by the server — next refresh possible at{' '}
-          {formatDateTime(data.refreshThrottledUntil)}.
+          The server refused the last refresh (at most one a minute per version) and answered with
+          the figures it had; next refresh possible at {formatDateTime(data.refreshThrottledUntil)}.
         </p>
       )}
       {data != null && (

@@ -354,10 +354,16 @@ function paintMarkers(
         if (kind.glyph !== undefined) {
           const text = texts[kind.key]?.get(id)
           const label = text === undefined ? kind.label : `${kind.label}: ${text}`
+          const element = viewer.get<ElementRegistry>('elementRegistry').get(id) as
+            { type?: string } | undefined
+          const type = element?.type
+          const eventPosition =
+            type?.endsWith('Event') === true ? kind.glyph.eventPosition : undefined
+          const onEvent = eventPosition !== undefined
           overlayIds.push(
             overlays.add(id, 'diagram-marker', {
-              position: kind.glyph.position,
-              html: `<span class="${kind.glyph.className}" role="img" aria-label="${label}" title="${label}">${text ?? kind.glyph.text}</span>`,
+              position: eventPosition ?? kind.glyph.position,
+              html: `<span class="${kind.glyph.className}${onEvent ? ' glyph-above' : ''}" role="img" aria-label="${label}" title="${label}">${text ?? kind.glyph.text}</span>`,
             }),
           )
         }

@@ -4855,6 +4855,17 @@ button.skip-link {
   /* One line: a wrapped badge covers the node label. Wider than a small task, it overhangs left. */
   white-space: nowrap;
 }
+.heat-badge.glyph-above {
+  /* Centred above an event's circle, two short lines at most: clear of the gateway and the
+     next shape on either side (the event's own label sits below it). */
+  transform: translate(-50%, -100%);
+  white-space: normal;
+  width: max-content;
+  max-width: 120px;
+  font-size: 9px;
+  line-height: 1.15;
+  text-align: center;
+}
 .heat-badge-dominant {
   border-width: 2px;
 }
