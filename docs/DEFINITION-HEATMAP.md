@@ -96,10 +96,22 @@ every process (pool) and subprocess, with its outgoing flows. Per instance, a ro
   sampling note adds *"event-gateway branches inferred from timing, this engine records no
   routes"* whenever the inference decided a row.
 
-Each successor (or flow) row takes at most one event row, the latest-ending one that ended at or
-before it started; with route history the flow row is the record and timing only attributes it
-to a visit. So a loop that armed an event twice and took it once is one taken visit and one armed
-visit, and the duration counted is the taken visit's. An unfinished event row is armed.
+Each successor (or flow) row takes at most one event row, across ALL catch events (a merge
+gateway after two branches is one row, so one taken event), the latest-ending one that ended at
+or before it started and that no row of the same successor took already; an event visit is taken
+once whichever of its outgoing flows took it (an event that forks into two flows is one visit).
+With route history the flow row is the record and timing only attributes it to a visit. So a
+loop that armed an event twice and took it once is one taken visit and one armed visit, and the
+duration counted is the taken visit's. An unfinished event row is armed.
+
+**Known misreading of the 6.3 inference** (marked: the note says *inferred*). A direct successor
+also reached by another path makes an armed event look taken. Smallest case: `gw` arms `A` → `x`
+and `B` → `y` → `x`; `B` fires, `y` runs, then `x` starts after `A`'s end, so `A` counts as taken
+too (`HeatAggregatorEventGatewayEdgeTest`). Route history (6.4+) has no such case.
+
+**A gateway-armed catch event without an outgoing flow** (implicit end) leaves nothing to tell a
+fired visit from an armed one: the whole definition counts as without BPMN and says
+`structure: UNAVAILABLE`.
 
 An armed visit is left out of `executions`, `instances`/`hitPct`, avg/p50/p95/max/`totalMs` and
 the `sharePct` denominator, and counted in the node's `armedNotTaken` (visits, same unit as
@@ -160,7 +172,8 @@ Consequences:
    - **finished instances > 0, and EVERY analysed sampled instance has 0 activity rows** →
      `NO_ACTIVITY_HISTORY` (owner decision B, 2026-11-18). An empty instance among non-empty
      ones is dropped and counted (`dropReasons.noActivityHistory`, §3.4), not a reason to blank
-     the map. Under `instance` or a per-process override, every finished instance
+     the map. A row of any type counts, `sequenceFlow` included (an instance with flow rows only
+     is not empty; Flowable never writes one without a start-event row). Under `instance` or a per-process override, every finished instance
      at `activity` or above has at least a start-event row. Say *"this definition records no
      activity history (history level below `activity`)"*, never zeros.
    - **0 historic instances** → `NO_HISTORY`. Over REST this can't be told apart from "never
@@ -481,6 +494,8 @@ counted per distinct instance.
     (`HeatAggregatorEventGatewayTest`). The parser finds armed nodes in subprocesses and
     second pools, includes receive tasks, and refuses a DOCTYPE / external entity without
     fetching it (`BpmnEventGatewayStructureTest`).
+    Forked, merged, flowless and joined catch events, boundary and event-subprocess starts
+    (`HeatAggregatorEventGatewayEdgeTest`).
   - An over-long instance is dropped and counted.
   - Fewer than 20 samples give `p95Ms=null`.
   - Funnel rows plus `noEndEventCount` add up to the sample.
