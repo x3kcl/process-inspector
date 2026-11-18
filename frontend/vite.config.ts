@@ -51,13 +51,14 @@ export default defineConfig({
       include: ['src/**/*.{ts,tsx}'],
       exclude: ['src/**/*.test.{ts,tsx}', 'src/api/schema.d.ts'],
       thresholds: {
-        // 2026-10-22 unit run: 57.3% lines / 47.4% branches / 47.0% functions / 56.7% statements.
-        lines: 55,
-        branches: 45,
-        functions: 44,
-        statements: 54,
-        'src/api/queries.ts': { lines: 90 },
-        'src/inspect/variables/editor/EditorPanel.tsx': { lines: 70 },
+        // Floor = measured minus 3 points, rounded down (TEST-STRATEGY.md §1).
+        // 2026-11-17 unit run: 62.5% lines / 51.9% branches / 52.5% functions / 61.4% statements.
+        lines: 59,
+        branches: 48,
+        functions: 49,
+        statements: 58,
+        'src/api/queries.ts': { lines: 97 },
+        'src/inspect/variables/editor/EditorPanel.tsx': { lines: 72 },
       },
     },
   },

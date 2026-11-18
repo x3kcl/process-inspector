@@ -13,19 +13,20 @@ Test depth follows product risk, not code size:
 | R3 | **Bulk outcomes** | every outcome class (`ok/failed/skipped/skipped-protected/unknown/not_run`) produced by an automated test; timeout→UNKNOWN never re-fired; INTERRUPTED reconciliation |
 | R4 | **UI flows** | Playwright smoke of FIND→ORIENT→DIAGNOSE→FIX→VERIFY, ≤10 min in PR CI; axe accessibility checks hard-fail |
 
-**Backend line coverage and frontend coverage are CI gates** (issue #463), set a small margin
-under the latest unit-scope measurement so a one-line miss does not flake the build:
+**Backend line coverage and frontend coverage are CI gates** (issue #463). **Floor = measured
+minus 3 percentage points, rounded down to a whole percent**, for every gated metric, so a
+one-line miss does not flake the build (owner decision 2026-11-17):
 
-| Gate | Measured | Floor |
+| Gate | Measured (2026-11-17, unit scope) | Floor |
 |---|---|---|
-| Backend bundle, `mvn test` | 77.1% line / 63.2% branch (2026-11-12, after #464; was 67.9% / 58.3% on 2026-10-22) | 74% line / 61% branch (`jacoco:check` in the `unit` job) |
-| Backend packages with a package rule | surgery, config, dto, attention, sibling, stream, bulk, incident, diag, audit, selfheal, ops (all ≥80% on 2026-10-22); since #464 also `aggregate` 78.0%, `client` 77.2%, `triage` 95.8%, `security.mapping` 96.8% | 75% line each. Packages under the bundle floor have no package rule |
-| Frontend, `npm run test:coverage` | 57.3% line / 47.4% branch (2026-10-22, after the `queries.ts` and `EditorPanel` tests) | 55% line / 45% branch / 44% functions / 54% statements. `queries.ts` lines ≥90, `EditorPanel.tsx` lines ≥70 |
+| Backend bundle, `mvn test` | 83.2% line / 68.8% branch | 80% line / 65% branch (`jacoco:check` in the `unit` job) |
+| Backend packages (one rule each) | surgery 87.8, config 91.0, dto 90.5, attention 97.8, sibling 98.2, stream 94.1, bulk 86.1, incident 86.8, diag 100, audit 90.1, selfheal 94.0, ops 87.5, aggregate 91.4, client 85.7, triage 96.1, security.mapping 96.8 | line: 84, 88, 87, 94, 95, 91, 83, 83, 97, 87, 91, 84, 88, 82, 93, 93 (same order). Packages under the bundle floor have no package rule |
+| Frontend, `npm run test:coverage` | 62.5% line / 51.9% branch / 52.5% functions / 61.4% statements | 59% line / 48% branch / 49% functions / 58% statements. `queries.ts` lines 97 (measured 100), `EditorPanel.tsx` lines 72 (measured 75) |
 
-**Ratchet.** A PR that raises a measured number raises the matching floor in the same PR.
-A floor is not lowered to land a change. The 80% backend / 70% frontend figures above the
-table stay the risk-ranked aspiration; they are not the gate, because a bundle floor at 80% would
-still fail every build. #464 lifted the four core classes (`SearchService` 95%, `ProcessApiClient`
+**Ratchet.** When measured coverage has risen so that measured minus 3 (rounded down) exceeds
+the floor, raise the floor to that value in the same or the next pull request. Never lower a
+floor without an owner decision recorded in the pull request. The 80% backend / 70% frontend
+figures above stay the risk-ranked aspiration; the frontend is not there yet. #464 lifted the four core classes (`SearchService` 95%, `ProcessApiClient`
 100%, `TriageAggregationService` 96% line) with rung-2 WireMock tests that replay RECORDED
 flowable-rest 6.8/7.1 documents (`backend/src/test/resources/wire/`, re-recorded by
 `scripts/record-wire-fixtures.sh`); the live status join stays on the dockerized `*IT` rung. `jacoco.xml` and
