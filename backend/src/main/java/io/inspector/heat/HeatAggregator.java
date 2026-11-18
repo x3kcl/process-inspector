@@ -95,8 +95,13 @@ public final class HeatAggregator {
                 nodes,
                 outcomes,
                 noEnd,
-                "Newest %d of %d finished instances (sample, not the full history)."
-                        .formatted(sampled, s.finishedTotal()));
+                "Newest %d of %d finished instances (sample, not the full history)%s."
+                        .formatted(
+                                sampled,
+                                s.finishedTotal(),
+                                dropped > 0
+                                        ? "; %d dropped, figures over the remaining %d".formatted(dropped, ok.size())
+                                        : ""));
     }
 
     private static List<NodeHeat> nodes(List<List<ActivityInstanceRecord>> ok) {
