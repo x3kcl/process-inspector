@@ -9,10 +9,10 @@ Never press Merge, never push `main`. Heavy checks (`docker`, `integration`) rep
 not on the pull request, so the batch is the real gate.
 
 1. `scripts/ci-watch.sh <head-sha>` is green (PR lane: lint, unit, frontend, e2e).
-2. `scripts/pr-queue.sh <PR>` adds the `queue` label. Exit 1 = the head's `ci` run is not green: fix it, do not force it.
+2. `scripts/pr-queue.sh <PR>` adds the `queue` label. Exit 1 = a `pull_request` run on the head (`ci`, `supply-chain-pr`, ... every one, newest per workflow) is red or still running: fix it, do not force it.
 3. `scripts/pr-queue.sh --watch <PR>`: exit 0 merged; exit 1 the queue removed the label (its comment is printed:
-   a red batch or a rebase conflict; read the failing job log before assuming it is yours) or refused the head on a landing rule (label kept, `mq-red-first:`/`mq-red-frozen:` comment printed; push a new head); exit 3 timeout.
-4. `scripts/pr-queue.sh --status <PR>` prints label, head run, merged flag, and `refused: <marker>` when the queue refused the current head.
+   a red batch or a rebase conflict; read the failing job log before assuming it is yours) or refused the head (label kept, comment printed; push a new head): an `mq-verdict` with `state:refused`, or the markers `mq-red:` (a PR lane red), `mq-red-first:`, `mq-red-frozen:`, `mq-skip:` (a lane skipped; rebase). A refusal for an older head is ignored; exit 3 timeout.
+4. `scripts/pr-queue.sh --status <PR>` prints label, head run, merged flag, and `refused: <code or marker>` when the queue refused the current head.
 
 Offline proof of the script: `scripts/pr-queue-selftest.sh` (stubbed `curl`; part of `lint`).
 Standing approval to queue is the operator's call: queue only when the task or the operator says so.
