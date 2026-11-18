@@ -30,6 +30,7 @@ public record DefinitionHeat(
 
     public enum Coverage {
         FULL,
+        /** No sequenceFlow rows: no flow layer, and the event-gateway armed/taken split is inferred. */
         NO_FLOW_HISTORY,
         NO_ACTIVITY_HISTORY,
         NO_HISTORY
