@@ -14,6 +14,7 @@ public record DefinitionHeat(
         Instant asOf,
         boolean cached,
         Coverage coverage,
+        Structure structure,
         int requestedN,
         int sampledInstances,
         long finishedTotal,
@@ -34,6 +35,15 @@ public record DefinitionHeat(
         NO_HISTORY
     }
 
+    /**
+     * Whether the definition's BPMN was read to tell armed event-gateway catch events from taken
+     * ones. UNAVAILABLE: no XML was passed or it did not parse; such events count as today.
+     */
+    public enum Structure {
+        RESOLVED,
+        UNAVAILABLE
+    }
+
     public enum Tier {
         DOMINANT,
         WARM,
@@ -51,6 +61,7 @@ public record DefinitionHeat(
             int executions,
             int instances,
             double hitPct,
+            int armedNotTaken,
             Double avgMs,
             Long p50Ms,
             Long p95Ms,

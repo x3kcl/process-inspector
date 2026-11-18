@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" targetNamespace="spike">
+  <message id="mA" name="msgA"/>
+  <message id="mB" name="msgB"/>
+  <process id="heatEvgw" name="Heat evgw" isExecutable="true">
+    <startEvent id="start"/>
+    <sequenceFlow id="f0" sourceRef="start" targetRef="gw"/>
+    <eventBasedGateway id="gw"/>
+    <sequenceFlow id="fa" sourceRef="gw" targetRef="catchA"/>
+    <sequenceFlow id="fb" sourceRef="gw" targetRef="catchB"/>
+    <intermediateCatchEvent id="catchA" name="A"><messageEventDefinition messageRef="mA"/></intermediateCatchEvent>
+    <intermediateCatchEvent id="catchB" name="B"><messageEventDefinition messageRef="mB"/></intermediateCatchEvent>
+    <sequenceFlow id="fa2" sourceRef="catchA" targetRef="endA"/>
+    <sequenceFlow id="fb2" sourceRef="catchB" targetRef="endB"/>
+    <endEvent id="endA" name="A done"/>
+    <endEvent id="endB" name="B done"/>
+  </process>
+</definitions>

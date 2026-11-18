@@ -63,6 +63,9 @@ public final class BpmnStructure {
         }
     }
 
+    /** An outgoing sequence flow: its id and the node it leads to. */
+    public record Flow(String id, String target) {}
+
     private final Map<String, FlowNode> nodes;
     private final Map<String, String> miScopeOf; // element id -> its multi-instance root id
     private final Set<String> parallelForks;
@@ -152,7 +155,22 @@ public final class BpmnStructure {
         return false;
     }
 
+    /**
+     * Intermediate catch events and receive tasks that an event-based gateway arms (one of
+     * their incoming flows comes from an {@code eventBasedGateway}, in any process or
+     * subprocess), each with its outgoing sequence flows. Heat (#783) uses it to tell an armed
+     * event from a taken one.
+     */
+    public Map<String, List<Flow>> eventGatewayCatches() {
+        return Map.of(); // RED stub
+    }
+
     /* --------------------------------- parsing --------------------------------- */
+
+    /** Structure from the deployed BPMN XML alone (no /model JSON, so no multi-instance info). */
+    public static BpmnStructure fromXml(String bpmnXml) {
+        return parse(Map.of(), bpmnXml);
+    }
 
     public static BpmnStructure parse(Map<String, Object> modelJson, String bpmnXml) {
         Map<String, String> miScopeOf = new LinkedHashMap<>();

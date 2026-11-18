@@ -32,7 +32,22 @@ public final class HeatAggregator {
             long finishedTotal,
             Instant oldestEnd,
             Instant newestEnd,
-            List<Instance> instances) {}
+            List<Instance> instances,
+            String bpmnXml) {
+
+        /** Without the definition's BPMN XML: armed event-gateway catch events cannot be resolved. */
+        public Sample(
+                String engineId,
+                String definitionId,
+                Instant asOf,
+                int requestedN,
+                long finishedTotal,
+                Instant oldestEnd,
+                Instant newestEnd,
+                List<Instance> instances) {
+            this(engineId, definitionId, asOf, requestedN, finishedTotal, oldestEnd, newestEnd, instances, null);
+        }
+    }
 
     private static final String FLOW = "sequenceFlow";
     private static final int P95_FLOOR = 20;
@@ -84,6 +99,7 @@ public final class HeatAggregator {
                 s.asOf(),
                 false,
                 coverage,
+                null,
                 s.requestedN(),
                 sampled,
                 s.finishedTotal(),
@@ -151,6 +167,7 @@ public final class HeatAggregator {
                 a.executions,
                 a.instances,
                 a.instances * 100.0 / analysed,
+                0,
                 avg,
                 any ? nearestRank(sorted, 50) : null,
                 sorted.size() >= P95_FLOOR ? nearestRank(sorted, 95) : null,
