@@ -127,6 +127,8 @@ IT_LEGS=(
   "migration-findings|flowable-6,flowable-7,postgres|CaseMigrationIT"
   "migration-findings|flowable-6,flowable-7,postgres|TimerReschedule7IT"
   "migration-findings|flowable-6,flowable-7,postgres|TaskAdminVerbsIT"
+  "migration-findings|flowable-6,flowable-7,postgres|HeatIT"
+  "legacy|legacy,postgres|HeatLegacyIT"
 )
 
 integration_leg() { # profile compose-profiles it-classes — runs in a subshell: its env and ports are its own
@@ -268,7 +270,7 @@ nightly_engine_its() {
   bash docker/seed.sh --profile flowable-6
   nightly_ryuk
   # SelfHealLikelyLaneIT is several minutes of real engine retries; the job's 40 minutes cover it.
-  nightly_its -Dit.test=CorrectiveActionIT,CmmnCorrectiveActionIT,FailClosedAuditIT,FlowSurgeryIT,BulkFilterIT,BulkErrorClassIT,SnapshotSamplerIT,DefinitionVersionsIT,MigrationIT,DetailResolveIT,InstanceTimelineIT,IncidentLedgerArcIT,SelfHealDwellSuppressionIT,SelfHealLikelyLaneIT,SelfHealMixedLaneIT,VariableRevealIT,TaskAdminVerbs68IT
+  nightly_its -Dit.test=CorrectiveActionIT,CmmnCorrectiveActionIT,FailClosedAuditIT,FlowSurgeryIT,BulkFilterIT,BulkErrorClassIT,SnapshotSamplerIT,DefinitionVersionsIT,MigrationIT,DetailResolveIT,InstanceTimelineIT,IncidentLedgerArcIT,SelfHealDwellSuppressionIT,SelfHealLikelyLaneIT,SelfHealMixedLaneIT,VariableRevealIT,TaskAdminVerbs68IT,Heat68IT
 }
 
 nightly_perf_p1() {

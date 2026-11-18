@@ -258,6 +258,15 @@ jobs:
           - profile: migration-findings
             composeProfiles: "flowable-6,flowable-7,postgres"
             itClass: TaskAdminVerbsIT
+          # Definition heat (#786): seeded runs read back through the heat endpoint on 6.8 and 7.1.
+          - profile: migration-findings
+            composeProfiles: "flowable-6,flowable-7,postgres"
+            itClass: HeatIT
+          # The same on 6.3.1 (no route history: timing inference), its own leg so the legacy job
+          # name above stays as the ruleset has it.
+          - profile: legacy
+            composeProfiles: "legacy,postgres"
+            itClass: HeatLegacyIT
     env:
       # Dependabot PRs (#445) run on the slot runners, but that actor's token is read-only and
       # cannot pull the private flap image: that leg's registry steps and the contract's leg skip.
