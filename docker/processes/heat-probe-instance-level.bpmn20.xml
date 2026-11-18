@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:flowable="http://flowable.org/bpmn"
+             xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+             xmlns:omgdc="http://www.omg.org/spec/DD/20100524/DC"
+             xmlns:omgdi="http://www.omg.org/spec/DD/20100524/DI"
+             typeLanguage="http://www.w3.org/2001/XMLSchema"
+             expressionLanguage="http://www.w3.org/1999/XPath"
+             targetNamespace="http://inspector.io/demo">
+
+  <!-- Definition heat without activity history (HeatITBase, #786): a straight-through process
+       whose per-process history level is `instance` (DEFINITION-HEATMAP.md §2) — the engine
+       keeps the historic process instance and no activity row. -->
+  <process id="heatProbeInstanceLevel" name="Heat Probe (instance history)" isExecutable="true">
+    <extensionElements>
+      <flowable:historyLevel>instance</flowable:historyLevel>
+    </extensionElements>
+    <startEvent id="start" name="Start"/>
+    <sequenceFlow id="f1" sourceRef="start" targetRef="end"/>
+    <endEvent id="end" name="Done"/>
+  </process>
+
+  <bpmndi:BPMNDiagram id="BPMNDiagram_heatProbeInstanceLevel">
+    <bpmndi:BPMNPlane id="BPMNPlane_heatProbeInstanceLevel" bpmnElement="heatProbeInstanceLevel">
+      <bpmndi:BPMNShape id="BPMNShape_start" bpmnElement="start">
+        <omgdc:Bounds x="100" y="100" width="30" height="30"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_end" bpmnElement="end">
+        <omgdc:Bounds x="200" y="101" width="28" height="28"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="BPMNEdge_f1" bpmnElement="f1">
+        <omgdi:waypoint x="130" y="115"/>
+        <omgdi:waypoint x="200" y="115"/>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</definitions>
