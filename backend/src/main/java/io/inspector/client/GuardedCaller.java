@@ -127,7 +127,11 @@ public class GuardedCaller {
         // keyed "{id}:deep-page" so deep scroll degrades itself, never interactive search.
         DEEP_PAGE("deep-page", "deep-page"),
         // History deletes must not take the interactive permits or the sampler lane.
-        HOUSEKEEPING("housekeeping", "housekeeping");
+        HOUSEKEEPING("housekeeping", "housekeeping"),
+        // Definition heat (#784, DEFINITION-HEATMAP.md §4): a user-initiated gather of 201-1001
+        // reads must never take the interactive permits, the sampler's or deep paging's. Its OWN
+        // 2-permit bulkhead and breaker keyed "{id}:aggregate".
+        AGGREGATE("aggregate", "aggregate");
 
         private final String config;
         private final String suffix;

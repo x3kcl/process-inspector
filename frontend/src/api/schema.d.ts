@@ -885,6 +885,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/definitions/{engineId}/{definitionId}/heat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["heat"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/definitions/{engineId}/{definitionId}/jobs": {
         parameters: {
             query?: never;
@@ -2717,6 +2733,38 @@ export interface components {
             version?: number;
             versions?: components["schemas"]["VersionRef"][];
         };
+        DefinitionHeat: {
+            /** Format: date-time */
+            asOf?: string;
+            cached?: boolean;
+            /** @enum {string} */
+            coverage?: "FULL" | "NO_FLOW_HISTORY" | "NO_ACTIVITY_HISTORY" | "NO_HISTORY";
+            definitionId?: string;
+            dropReasons?: components["schemas"]["DropReasons"];
+            /** Format: int32 */
+            droppedInstances?: number;
+            engineId?: string;
+            /** Format: int64 */
+            finishedTotal?: number;
+            /** Format: date-time */
+            newestEnd?: string;
+            /** Format: int32 */
+            noEndEventCount?: number;
+            nodes?: components["schemas"]["NodeHeat"][];
+            /** Format: date-time */
+            oldestEnd?: string;
+            outcomes?: components["schemas"]["Outcome"][];
+            partial?: boolean;
+            /** Format: date-time */
+            refreshThrottledUntil?: string;
+            /** Format: int32 */
+            requestedN?: number;
+            /** Format: int32 */
+            sampledInstances?: number;
+            samplingNote?: string;
+            /** @enum {string} */
+            structure?: "RESOLVED" | "UNAVAILABLE";
+        };
         DefinitionJobsResponse: {
             lanes?: components["schemas"]["JobLaneCount"][];
             scope?: string;
@@ -2796,6 +2844,14 @@ export interface components {
             changed?: string[];
             empty?: boolean;
             removed?: string[];
+        };
+        DropReasons: {
+            /** Format: int32 */
+            noActivityHistory?: number;
+            /** Format: int32 */
+            readFailed?: number;
+            /** Format: int32 */
+            tooManyRows?: number;
         };
         EditRequest: {
             description?: string;
@@ -3497,6 +3553,33 @@ export interface components {
             found?: boolean;
             processDefinitionKey?: string;
             sibling?: components["schemas"]["SiblingRef"];
+        };
+        NodeHeat: {
+            activityId?: string;
+            /** Format: int32 */
+            armedNotTaken?: number;
+            /** Format: double */
+            avgMs?: number;
+            /** Format: int32 */
+            executions?: number;
+            /** Format: double */
+            hitPct?: number;
+            /** Format: int32 */
+            instances?: number;
+            /** Format: int64 */
+            maxMs?: number;
+            name?: string;
+            /** Format: int64 */
+            p50Ms?: number;
+            /** Format: int64 */
+            p95Ms?: number;
+            /** Format: double */
+            sharePct?: number;
+            /** @enum {string} */
+            tier?: "DOMINANT" | "WARM" | "COOL" | "NONE";
+            /** Format: int64 */
+            totalMs?: number;
+            type?: string;
         };
         NoteDto: {
             author?: string;
@@ -5594,6 +5677,32 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["BpmnDiffResponse"];
+                };
+            };
+        };
+    };
+    heat: {
+        parameters: {
+            query?: {
+                n?: number;
+                refresh?: boolean;
+            };
+            header?: never;
+            path: {
+                engineId: string;
+                definitionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["DefinitionHeat"];
                 };
             };
         };

@@ -133,6 +133,10 @@ resilience4j:
         base-config: engine
       housekeeping:
         base-config: engine
+      # Definition heat's OWN breaker (instances keyed "{id}:aggregate", #784): a failing heat
+      # gather trips independently of interactive search.
+      aggregate:
+        base-config: engine
   # Do-no-harm companion to the breaker (ARCH §2.2): caps concurrent in-flight calls PER
   # ENGINE so the search plans' parallel enrichment legs queue instead of flooding an
   # engine that is typically already under load when this tool is open.
@@ -155,6 +159,11 @@ resilience4j:
         max-wait-duration: 5s
       housekeeping:
         max-concurrent-calls: 1
+        max-wait-duration: 5s
+      # Definition heat's THIN lane (#784, DEFINITION-HEATMAP.md §4): one gather is 200+ reads;
+      # 2 permits per engine, a read that waits longer than 5s is dropped and counted.
+      aggregate:
+        max-concurrent-calls: 2
         max-wait-duration: 5s
 
 inspector:
@@ -196,6 +205,12 @@ inspector:
   # A stored hierarchy migration plan older than this is refused at submit (hierarchy-plan-expired)
   # and deleted by the daily retention job (#497, INSTANCE-MIGRATION.md §7.2).
   hierarchy-plan-max-age: PT24H
+  # Definition heat (#784, DEFINITION-HEATMAP.md §3.3): the newest N finished instances of one
+  # definition version. ?n= may ask for more or fewer, clamped to [1, max-sample-size].
+  # Both 1..1000 and sample-size <= max-sample-size, refused at boot otherwise.
+  heat:
+    sample-size: 200
+    max-sample-size: 1000
   # Stage 0 triage landing (SPEC §4): aggregation cache TTL (thundering-herd protection),
   # Refresh-bypass throttle, the cap on representative stacktrace fetches per round, and
   # the R-BAU-01 acknowledge auto-resurface threshold (an acknowledged group resurfaces

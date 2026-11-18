@@ -973,6 +973,25 @@ deployment id on prod). Case definitions on a 6.8+ engine appear in the catalog;
 diagram and BPMN job lanes say so instead of pretending to be process definitions.
 Uploading a deployment stays out (§11, decision #505).
 
+**Definition heat (#784, API only; the tab is #785).** `GET
+/api/definitions/{engineId}/{definitionId}/heat?n=&refresh=` answers the `DefinitionHeat` of
+[DEFINITION-HEATMAP.md](DEFINITION-HEATMAP.md) §6 for ONE BPMN definition version: per node
+executions, distinct instances, hit %, `armedNotTaken`, avg/p50/p95/max, share and tier; the
+outcome funnel; `coverage` (`FULL`, `NO_FLOW_HISTORY`, `NO_ACTIVITY_HISTORY`, `NO_HISTORY`, read
+from the data, never from engine config); `structure` (`RESOLVED`/`UNAVAILABLE`, whether the
+version's BPMN resolved armed event-gateway branches); and the honesty fields. It is always a
+SAMPLE: the newest `n` finished instances (default 200, clamped to `[1, 1000]`,
+`inspector.heat.*`), `finishedTotal` the "of M" from the same bounded query, and an instance
+whose activity rows do not fit one page, whose read fails, or that has no row while others do
+is dropped and counted (`droppedInstances`, `dropReasons`, `partial`). VIEWER on that engine,
+read scope respected; no variable value in the response. Cached 10 minutes per (engine,
+definition, N) with `asOf` and `cached`; `refresh=true` re-gathers at most once per 60 s per
+definition version, whatever `n`; a refused refresh answers as a plain read (the cached value,
+or a gather when that `n` is not cached) with `refreshThrottledUntil` (the instant the next
+refresh is allowed; null otherwise). Every per-instance read failed, or the engine did
+not answer → 503 (`heat-unavailable` / `engine-unavailable`), never an empty map; unknown
+definition → 404 `definition-not-found`; a CMMN case definition → 400 `heat-bpmn-only`.
+
 ## 5. Corrective actions — the verb catalog
 
 Every verb states what is preserved. Guard tiers per §6. All calls in
@@ -1363,6 +1382,12 @@ copy is never identical to an RBAC denial (R-GOV-04, R-SEM-17).
 | Error text | substring over exception snippets (BFF-side) |
 | Error signature | `signatureHash` (+ `signatureAlgoVersion`) — the normalized-signature hash (R-SEM-03), the triage card's drill-down; BFF-side over the failure-lane scans as an EXACT match on the job row's own snippet hash. Since algo v2 a card's identity is always its snippet hash (#270), so the drill needs no stacktrace fetch and no sample budget, and can no longer return zero rows for a card that is currently failing. **`signatureAlgoVersion` binds the hash to the normalizer generation that minted it** (#279): a non-current generation matches nothing by construction, so the search short-circuits to zero-with-reason (`signatureGeneration` response field) without touching an engine; an absent stamp (legacy link) is assumed-unknown — still run, still advised (see §4) |
 | Tenant | **not an operator-selectable filter**: the tenant is pinned per engine in the registry (`tenant-id`) and threaded into every engine query automatically — a multi-tenant engine is inspected through its registered tenant, never chosen ad hoc from the search form (`SearchRequest` deliberately has no tenant field) |
+
+Not a search filter but the same engine-load rule (#784): the definition heat view never uses
+the definition-wide activity query — it scans the whole activity table per page and the
+engines silently ignore `startedAfter` / `processInstanceIds` on it (6.3, 6.8 and 7.1,
+[DEFINITION-HEATMAP.md](DEFINITION-HEATMAP.md) §1.2, §3.1). It reads one activity page per
+sampled instance by `processInstanceId`, on its own `AGGREGATE` lane (ARCH §2.2).
 
 Combination rule unchanged: **AND between categories, OR within** — made visible by the
 compiled-criteria echo. Saved views: curated system views + user-named views + recent

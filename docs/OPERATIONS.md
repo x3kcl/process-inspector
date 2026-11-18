@@ -235,6 +235,13 @@ at least 1. `cache-ttl-s` is at least 1. `stacktrace-sample-cap`, `ack-resurface
 knobs, and `overdue-timer-grace-s` are at least 0 (those percents are not capped at 100).
 `burst-weight` is greater than 0. `auth.type` is required when an `auth` block is present.
 Advisory alarm minutes are not checked.
+`inspector.heat.sample-size` (default 200) and `inspector.heat.max-sample-size` (default
+1000) are both in `[1, 1000]`, and `sample-size` must be `<= max-sample-size` (#784). The
+definition heat view samples `sample-size` finished instances; a request's `?n=` is clamped to
+`[1, max-sample-size]` (lower the clamp to cut a gather's 1 + N engine reads; it cannot be
+raised past the owner-decided 1 000). The lane itself is `resilience4j.bulkhead.configs.aggregate`
+(2 permits, 5 s wait) and `resilience4j.circuitbreaker.configs.aggregate` (base `engine`); its
+latency shows as `engine_fanout_duration_seconds{leg="AGGREGATE"}`.
 
 `server.shutdown=graceful` (30 s); SIGTERM emits a terminal SSE `shutdown` event (once SSE
 exists) so clients reconnect instead of erroring. Deploy policy: single instance, accepted
