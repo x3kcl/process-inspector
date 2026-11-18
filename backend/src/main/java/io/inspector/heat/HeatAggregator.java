@@ -143,16 +143,20 @@ public final class HeatAggregator {
                                 inferred[0] ? INFERRED_NOTE : ""));
     }
 
-    /** The armable catch events of the BPMN, or null when it is absent or unparseable. */
+    /** The armable catch events of the BPMN, or null when it is absent, unparseable or unresolvable. */
     private static Map<String, List<Flow>> catches(String bpmnXml) {
         if (bpmnXml == null) {
             return null;
         }
+        Map<String, List<Flow>> catches;
         try {
-            return BpmnStructure.fromXml(bpmnXml).eventGatewayCatches();
+            catches = BpmnStructure.fromXml(bpmnXml).eventGatewayCatches();
         } catch (IllegalStateException e) {
             return null; // reported as Structure.UNAVAILABLE, never silently
         }
+        // A catch event without an outgoing flow (implicit end) leaves nothing to tell a fired
+        // visit from an armed one by: count the definition as without BPMN, and say so.
+        return catches.values().stream().anyMatch(List::isEmpty) ? null : catches;
     }
 
     private static List<NodeHeat> nodes(

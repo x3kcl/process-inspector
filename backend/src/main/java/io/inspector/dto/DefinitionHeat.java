@@ -38,7 +38,7 @@ public record DefinitionHeat(
 
     /**
      * Whether the definition's BPMN was read to tell armed event-gateway catch events from taken
-     * ones. UNAVAILABLE: no XML was passed or it did not parse; such events count as today.
+     * ones. UNAVAILABLE: no XML was passed, it did not parse, or an armable catch event has no outgoing flow; such events count as today.
      */
     public enum Structure {
         RESOLVED,
