@@ -91,7 +91,15 @@ public final class HeatAggregator {
         if (sampled > 0 && ok.isEmpty()) {
             throw new IllegalStateException("every sampled instance was dropped");
         }
-        boolean noActivity = ok.stream().anyMatch(List::isEmpty);
+        // Decision B: no activity history only when EVERY analysed instance is empty; otherwise
+        // an empty instance is dropped like any unreadable one.
+        boolean noActivity = !ok.isEmpty() && ok.stream().allMatch(List::isEmpty);
+        int empty = 0;
+        if (!noActivity) {
+            int before = ok.size();
+            ok.removeIf(List::isEmpty);
+            empty = before - ok.size();
+        }
         boolean anyFlow = ok.stream().flatMap(List::stream).anyMatch(r -> FLOW.equals(r.activityType()));
         Coverage coverage = sampled == 0
                 ? Coverage.NO_HISTORY
@@ -106,7 +114,7 @@ public final class HeatAggregator {
         if (figures) {
             noEnd = outcomes(ok, outcomes);
         }
-        int dropped = tooManyRows + readFailed;
+        int dropped = tooManyRows + readFailed + empty;
         return new DefinitionHeat(
                 s.engineId(),
                 s.definitionId(),
@@ -118,7 +126,7 @@ public final class HeatAggregator {
                 sampled,
                 s.finishedTotal(),
                 dropped,
-                new DefinitionHeat.DropReasons(tooManyRows, readFailed, 0),
+                new DefinitionHeat.DropReasons(tooManyRows, readFailed, empty),
                 s.oldestEnd(),
                 s.newestEnd(),
                 dropped > 0,
