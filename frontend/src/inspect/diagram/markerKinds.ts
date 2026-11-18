@@ -180,6 +180,44 @@ export const MARKER_KINDS: MarkerKind[] = [
     label: 'step duration',
     legend: 'step duration',
   },
+  // #785 definition heat: text badge inside the shape (bottom 4, right 4: clear of every glyph
+  // above) + a border that differs by tier. The figure and the tier word are in the badge text.
+  {
+    key: 'heatDominantActivityIds',
+    markerClass: 'marker-heat-dominant',
+    stroke: { color: INK, width: 4 },
+    glyph: {
+      text: 'heat',
+      className: 'heat-badge heat-badge-dominant',
+      position: { bottom: 4, right: 4 },
+    },
+    label: 'heat, dominant',
+    legend: 'heat badge, dominant: ≥ 40 % of measured time (heavy solid border)',
+  },
+  {
+    key: 'heatWarmActivityIds',
+    markerClass: 'marker-heat-warm',
+    stroke: { color: INK, width: 2 },
+    glyph: {
+      text: 'heat',
+      className: 'heat-badge heat-badge-warm',
+      position: { bottom: 4, right: 4 },
+    },
+    label: 'heat, warm',
+    legend: 'heat badge, warm: 10–40 % of measured time (solid border)',
+  },
+  {
+    key: 'heatCoolActivityIds',
+    markerClass: 'marker-heat-cool',
+    stroke: { color: INK, width: 2, dash: '4 3' },
+    glyph: {
+      text: 'heat',
+      className: 'heat-badge heat-badge-cool',
+      position: { bottom: 4, right: 4 },
+    },
+    label: 'heat, cool',
+    legend: 'heat badge, cool: under 10 % of measured time, or armed only (dashed border)',
+  },
 ]
 
 /** Per-id badge text overriding a kind's fixed glyph text (×2, 143 ms), keyed by kind key. */

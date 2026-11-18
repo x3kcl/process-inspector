@@ -37,6 +37,10 @@ export interface DiagramMarkers {
   blockerActivityIds?: string[]
   warningActivityIds?: string[]
   mappedActivityIds?: string[]
+  /** Definition heat (#785): badge ids by tier; text per id comes in through `glyphTexts`. */
+  heatDominantActivityIds?: string[]
+  heatWarmActivityIds?: string[]
+  heatCoolActivityIds?: string[]
 }
 
 interface Props {
@@ -62,6 +66,8 @@ interface Props {
    * nodes, duration badges. Absent (timeline pending or failed) = the plain markers only.
    */
   execution?: ExecutionOverlay
+  /** Per-id badge text for a kind (e.g. the heat badges); the execution overlay adds its own. */
+  glyphTexts?: GlyphTexts
 }
 
 interface SelectionEvent {
@@ -99,6 +105,7 @@ export function DiagramCanvas({
   pickerSourceIds,
   pickerTargetIds,
   execution,
+  glyphTexts: extraTexts,
 }: Props) {
   const frameRef = useRef<HTMLDivElement | null>(null)
   const hostRef = useRef<HTMLDivElement | null>(null)
@@ -126,7 +133,7 @@ export function DiagramCanvas({
 
   const { sets, texts } = useMemo(() => {
     const base: MarkerSets = { ...markers, pickerSourceIds, pickerTargetIds }
-    const glyphTexts: GlyphTexts = {}
+    const glyphTexts: GlyphTexts = { ...extraTexts }
     if (overlay === undefined) return { sets: base, texts: glyphTexts }
     // Active and dead-letter markers win over completed / armed on the same node.
     const live = new Set([...markers.activeActivityIds, ...markers.deadLetterActivityIds])
@@ -149,7 +156,7 @@ export function DiagramCanvas({
       },
       texts: glyphTexts,
     }
-  }, [markers, pickerSourceIds, pickerTargetIds, overlay])
+  }, [markers, pickerSourceIds, pickerTargetIds, overlay, extraTexts])
   const kinds = useMemo(() => presentKinds(sets), [sets])
 
   // One viewer per mount.
