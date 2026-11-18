@@ -178,6 +178,17 @@ Capture scripts live in `docker/`; captured fixtures carry the engine image tag.
 The catalog is realized in [TEST-SCENARIOS.md](TEST-SCENARIOS.md) §1 (fixtures `FIX-*`) with
 the scenario mapping (`TS-*`) in its §§2–12.
 
+Definition heat (#786, DEFINITION-HEATMAP.md §8) is proven at rung 4 by `HeatIT` (6.8 + 7.1, the
+`migration-findings` stack), `HeatLegacyIT` (6.3.1, a `legacy` leg) and `Heat68IT` (nightly
+`engine-its`), all on `HeatITBase`. They seed `heatProbe` (`docker/processes/heat-probe.bpmn20.xml`:
+14 runs to one named end, 8 to the other, 1 detour with two extra history rows; a 3 s timer; an
+event-based gateway whose message is sent over REST while its one-year timer stays armed) and
+`heatProbeInstanceLevel` (per-process `flowable:historyLevel` `instance`), and lower the bounds in
+the test registry: page size = one normal instance's rows (13; 7 on 6.3), so the detour is dropped
+as `tooManyRows`; `inspector.heat.sample-size` 20, `max-sample-size` 25. They assert hit counts,
+rates and funnel against the seed, the timing order, "newest N of M", the AGGREGATE lane and the
+cache through `engine_fanout_duration_seconds{leg="AGGREGATE"}`, and the refresh throttle.
+
 ## 7. Performance scenarios (R-TEST-05, replaces "Load-test fan-out")
 | # | Scenario | Threshold | When | Status |
 |---|---|---|---|---|
