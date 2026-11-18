@@ -42,7 +42,7 @@ import org.springframework.stereotype.Service;
  * ONE definition version, one activity page per instance, the version's BPMN, aggregated by
  * {@link HeatAggregator}. Every engine call runs on {@link CallPriority#AGGREGATE}. Results are
  * cached 10 minutes per (engine, definition, N), single-flight; a refresh bypasses the cache at
- * most once per 60 s per key, a refused one answers the cached value with {@code
+ * most once per 60 s per definition version (any N), a refused one answers the cached value with {@code
  * refreshThrottledUntil}. A failed gather is not cached.
  */
 @Service
@@ -55,13 +55,16 @@ public class DefinitionHeatService {
 
     private record Key(String engineId, String definitionId, int n) {}
 
+    /** The refresh throttle's key: one definition VERSION, whatever the sample size (#784). */
+    private record Version(String engineId, String definitionId) {}
+
     private final EngineRegistry registry;
     private final ProcessApiClient processes;
     private final CmmnApiClient cases;
     private final HeatProperties properties;
     private final Clock clock;
     private final AsyncCache<Key, DefinitionHeat> cache;
-    private final Cache<Key, Instant> lastRefresh;
+    private final Cache<Version, Instant> lastRefresh;
 
     public DefinitionHeatService(
             EngineRegistry registry,
@@ -91,7 +94,7 @@ public class DefinitionHeatService {
     public DefinitionHeat heat(String engineId, String definitionId, Integer n, boolean refresh) {
         EngineConfig engine = registry.resolveOrNotFound(engineId);
         Key key = new Key(engineId, definitionId, properties.clamp(n));
-        Instant throttledUntil = refresh ? claimRefresh(key) : null;
+        Instant throttledUntil = refresh ? claimRefresh(new Version(engineId, definitionId)) : null;
         if (refresh && throttledUntil == null) {
             cache.synchronous().invalidate(key);
         }
@@ -108,7 +111,7 @@ public class DefinitionHeatService {
     }
 
     /** Null when this caller may refresh now (and takes the slot), else when it next may. */
-    private Instant claimRefresh(Key key) {
+    private Instant claimRefresh(Version key) {
         Instant now = clock.instant();
         Instant[] refused = {null};
         lastRefresh.asMap().compute(key, (k, previous) -> {

@@ -986,8 +986,9 @@ whose activity rows do not fit one page, whose read fails, or that has no row wh
 is dropped and counted (`droppedInstances`, `dropReasons`, `partial`). VIEWER on that engine,
 read scope respected; no variable value in the response. Cached 10 minutes per (engine,
 definition, N) with `asOf` and `cached`; `refresh=true` re-gathers at most once per 60 s per
-key; a refused refresh answers the cached value with `refreshThrottledUntil` (the instant the
-next refresh is allowed; null otherwise). Every per-instance read failed, or the engine did
+definition version, whatever `n`; a refused refresh answers as a plain read (the cached value,
+or a gather when that `n` is not cached) with `refreshThrottledUntil` (the instant the next
+refresh is allowed; null otherwise). Every per-instance read failed, or the engine did
 not answer → 503 (`heat-unavailable` / `engine-unavailable`), never an empty map; unknown
 definition → 404 `definition-not-found`; a CMMN case definition → 400 `heat-bpmn-only`.
 

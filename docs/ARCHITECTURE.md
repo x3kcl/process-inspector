@@ -71,7 +71,8 @@ per-instance reads, so it must never take the interactive permits, and reusing `
 `deep-page` would couple unrelated degradations. The gather runs two reads at a time (the
 permits); a read that fails or waits past 5 s drops that instance and is counted
 (`readFailed`), never retried beyond what a read lane does. Its result is cached 10 minutes per
-(engine, definition, N), single-flight; Refresh bypasses it at most once per 60 s per key.
+(engine, definition, N), single-flight; Refresh bypasses it at most once per 60 s per definition
+version, whatever N.
 
 ### 2.3 Semantics — the status join (v2, corrected)
 

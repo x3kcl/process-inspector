@@ -8,7 +8,7 @@ import java.util.List;
  * SAMPLE: {@code sampledInstances} of {@code finishedTotal}, minus {@code droppedInstances}. The
  * per-flow layer is deliberately not part of this release (owner decision 5, #671). {@code cached}:
  * served from the 10-minute cache, not gathered by this request; {@code refreshThrottledUntil}: set
- * only when a refresh was refused (once per 60 s per key, #784), null otherwise.
+ * only when a refresh was refused (once per 60 s per definition version, #784), null otherwise.
  */
 public record DefinitionHeat(
         String engineId,
