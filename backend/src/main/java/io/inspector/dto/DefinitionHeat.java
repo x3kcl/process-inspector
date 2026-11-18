@@ -6,7 +6,9 @@ import java.util.List;
 /**
  * Per-definition-version heat map and outcome funnel (DEFINITION-HEATMAP.md §6, #783). Always a
  * SAMPLE: {@code sampledInstances} of {@code finishedTotal}, minus {@code droppedInstances}. The
- * per-flow layer is deliberately not part of this release (owner decision 5, #671).
+ * per-flow layer is deliberately not part of this release (owner decision 5, #671). {@code cached}:
+ * served from the 10-minute cache, not gathered by this request; {@code refreshThrottledUntil}: set
+ * only when a refresh was refused (once per 60 s per key, #784), null otherwise.
  */
 public record DefinitionHeat(
         String engineId,
@@ -26,7 +28,50 @@ public record DefinitionHeat(
         List<NodeHeat> nodes,
         List<Outcome> outcomes,
         int noEndEventCount,
-        String samplingNote) {
+        String samplingNote,
+        Instant refreshThrottledUntil) {
+
+    /** As aggregated: not yet served from a cache, no refresh refused. */
+    public DefinitionHeat(
+            String engineId,
+            String definitionId,
+            Instant asOf,
+            boolean cached,
+            Coverage coverage,
+            Structure structure,
+            int requestedN,
+            int sampledInstances,
+            long finishedTotal,
+            int droppedInstances,
+            DropReasons dropReasons,
+            Instant oldestEnd,
+            Instant newestEnd,
+            boolean partial,
+            List<NodeHeat> nodes,
+            List<Outcome> outcomes,
+            int noEndEventCount,
+            String samplingNote) {
+        this(
+                engineId,
+                definitionId,
+                asOf,
+                cached,
+                coverage,
+                structure,
+                requestedN,
+                sampledInstances,
+                finishedTotal,
+                droppedInstances,
+                dropReasons,
+                oldestEnd,
+                newestEnd,
+                partial,
+                nodes,
+                outcomes,
+                noEndEventCount,
+                samplingNote,
+                null);
+    }
 
     public enum Coverage {
         FULL,
