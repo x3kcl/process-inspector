@@ -75,6 +75,50 @@ outgoing flow lands in `armedNotTaken`, and no route is drawn. This was derived 
 code against the 6.3 rows above. It was not reproduced in the UI. It needs its own issue: a
 capability or "no flow rows at all" fallback.
 
+### 1.1a Event-based gateway: armed catch events look taken
+
+Recorded on fresh 6.3.1, 6.8.0 and 7.1.0 engines (`wire/{6.3,6.8,7.1}/historic-activity-instances-evgw.json`,
+model `backend/src/test/resources/heat/heatEvgw.bpmn20.xml`: `gw` arms `catchA` and `catchB`,
+only `catchA` fired). The catch event that did NOT fire (`catchB`) still has a **finished row
+with a duration** (95–121 ms, the wait until `catchA` fired) on all three versions. Nothing on
+the row says "not taken" (no `deleteReason` over REST). Counted naively it gets a 100 % hit rate,
+and its wait counts in the total every node's share is measured against.
+
+**Rule (owner decision A, 2026-11-18).** The aggregator gets the definition version's BPMN XML
+and reads (`BpmnStructure.eventGatewayCatches()`, the surgery parser, XXE-hardened) every
+intermediate catch event or receive task with an incoming flow from an `eventBasedGateway`, in
+every process (pool) and subprocess, with its outgoing flows. Per instance, a row of such a node is:
+
+- **with route history** (the instance has at least one `sequenceFlow` row): *taken* iff one of
+  its outgoing flows has a row;
+- **without** (6.3): *taken* iff one of its direct successors has a row that starts at or after
+  the event row's end. This is inferred, not recorded: coverage is `NO_FLOW_HISTORY` and the
+  sampling note adds *"event-gateway branches inferred from timing, this engine records no
+  routes"* whenever the inference decided a row.
+
+Each successor (or flow) row takes at most one event row, across ALL catch events (a merge
+gateway after two branches is one row, so one taken event), the latest-ending one that ended at
+or before it started and that no row of the same successor took already; an event visit is taken
+once whichever of its outgoing flows took it (an event that forks into two flows is one visit).
+With route history the flow row is the record and timing only attributes it to a visit. So a
+loop that armed an event twice and took it once is one taken visit and one armed visit, and the
+duration counted is the taken visit's. An unfinished event row is armed.
+
+**Known misreading of the 6.3 inference** (marked: the note says *inferred*). A direct successor
+also reached by another path makes an armed event look taken. Smallest case: `gw` arms `A` → `x`
+and `B` → `y` → `x`; `B` fires, `y` runs, then `x` starts after `A`'s end, so `A` counts as taken
+too (`HeatAggregatorEventGatewayEdgeTest`). Route history (6.4+) has no such case.
+
+**A gateway-armed catch event without an outgoing flow** (implicit end) leaves nothing to tell a
+fired visit from an armed one: the whole definition counts as without BPMN and says
+`structure: UNAVAILABLE`.
+
+An armed visit is left out of `executions`, `instances`/`hitPct`, avg/p50/p95/max/`totalMs` and
+the `sharePct` denominator, and counted in the node's `armedNotTaken` (visits, same unit as
+`executions`), so H3 can say "armed in N, taken in M". A node armed but never taken stays in
+`nodes` with zero figures. No XML, or XML that does not parse: the rows count as before and the
+response says `structure: UNAVAILABLE` (never a silent fallback).
+
 ### 1.2 Filters the REST layer silently drops
 
 These were checked with impossible or narrowing values on 6.3.1 / 6.8.0 / 7.1.0:
@@ -125,8 +169,11 @@ Consequences:
    level (`/management/engine` gives name and version only). The gate therefore has to be
    **observed per definition, from the data**. It must not come from engine config or a version
    check:
-   - **finished instances > 0, and a sampled finished instance has 0 activity rows** →
-     `NO_ACTIVITY_HISTORY`. Under `instance` or a per-process override, every finished instance
+   - **finished instances > 0, and EVERY analysed sampled instance has 0 activity rows** →
+     `NO_ACTIVITY_HISTORY` (owner decision B, 2026-11-18). An empty instance among non-empty
+     ones is dropped and counted (`dropReasons.noActivityHistory`, §3.4), not a reason to blank
+     the map. A row of any type counts, `sequenceFlow` included (an instance with flow rows only
+     is not empty; Flowable never writes one without a start-event row). Under `instance` or a per-process override, every finished instance
      at `activity` or above has at least a start-event row. Say *"this definition records no
      activity history (history level below `activity`)"*, never zeros.
    - **0 historic instances** → `NO_HISTORY`. Over REST this can't be told apart from "never
@@ -257,11 +304,12 @@ applies every time. Three kinds of incompleteness are reported separately, never
 
 1. **Sampled, not all:** `sampledInstances < finishedTotal`. A permanent caption on the tab:
    *"Newest 200 of 10 000 finished instances (ended 2026-11-10 → 2026-11-17)."*
-2. **Dropped instances:** an instance had more rows than one page, or its read failed (bulkhead
-   full, timeout, open breaker). It is excluded, never counted half-read, and reported as
+2. **Dropped instances:** an instance had more rows than one page (`tooManyRows`), its read
+   failed (`readFailed`: bulkhead full, timeout, open breaker), or it has no activity row while
+   others in the sample do (`noActivityHistory`, decision B). It is excluded, never counted half-read, and reported as
    `droppedInstances` with a reason count. The badge says *"Partial sample: 12 instances
    dropped"*. Hit rate and share are computed over `sampledInstances` minus the dropped ones,
-   and the caption says so.
+   and the caption says so (*"…; 12 dropped, figures over the remaining 188."*).
 3. **Coverage below what the view draws:** `NO_FLOW_HISTORY` (no flow layer), plus
    `NO_ACTIVITY_HISTORY` and `NO_HISTORY` (no figures at all, an explanation in their place).
 
@@ -361,7 +409,10 @@ gateways by the flow layer.
 - Engine paths, all already whitelisted in shape: `history/historic-process-instances`
   (finished, sort endTime) and `history/historic-activity-instances?processInstanceId=`. The
   BPMN XML stays on the existing `/xml` endpoint; the frontend parses the async flags and the
-  flow ids from it, as #677 does.
+  flow ids from it, as #677 does. The gather (H2) ALSO reads the definition version's BPMN XML
+  (`repository/process-definitions/{id}/resourcedata`, already whitelisted) and passes it to
+  the aggregator (`Sample.bpmnXml`) for the event-gateway rule (§1.1a); if that read fails it
+  passes null and the response says `structure: UNAVAILABLE`.
 - `n` is clamped to `[1, 1000]`. A disabled engine resolves through
   `EngineRegistry.resolveOrNotFound()` like the other read surfaces.
 
@@ -369,12 +420,14 @@ gateways by the flow layer.
 DefinitionHeat {
   engineId, definitionId, asOf, cached: boolean,
   coverage: FULL | NO_FLOW_HISTORY | NO_ACTIVITY_HISTORY | NO_HISTORY,
+                    // NO_FLOW_HISTORY also means: event-gateway taken/armed split inferred (§1.1a)
+  structure: RESOLVED | UNAVAILABLE,                    // BPMN read for the §1.1a rule, or not
   requestedN, sampledInstances, finishedTotal,          // "newest 200 of 10 000"
-  droppedInstances, dropReasons: { tooManyRows, readFailed },
+  droppedInstances, dropReasons: { tooManyRows, readFailed, noActivityHistory },
   oldestEnd, newestEnd,
   partial: boolean,                                     // droppedInstances > 0
-  nodes:    [{ activityId, name, type, executions, instances, hitPct,
-               avgMs, p50Ms, p95Ms?/*null below 20 samples*/, maxMs, totalMs, sharePct }],
+  nodes:    [{ activityId, name, type, executions, instances, hitPct, armedNotTaken,
+               avgMs, p50Ms, p95Ms?/*null below 20 samples*/, maxMs, totalMs, sharePct, tier }],
   flows:    [{ flowId, instances, takenPct }] | null,   // null when coverage = NO_FLOW_HISTORY
   outcomes: [{ endEventId, name, count, pct }],
   noEndEventCount,
@@ -431,7 +484,18 @@ counted per distinct instance.
 - **Rung 1, pure static, RED first:** the aggregation from fixture rows.
   - The 6.8 parallel join gives `executions` 2 and `instances` 1.
   - 6.3 rows (no flows) give `coverage=NO_FLOW_HISTORY` and `flows=null`.
-  - A finished instance with 0 rows gives `NO_ACTIVITY_HISTORY`.
+  - Every analysed instance with 0 rows gives `NO_ACTIVITY_HISTORY`; 0, 1 and N−1 of N empty
+    drop the empty ones (`noActivityHistory`), N of N and N = 1 empty give
+    `NO_ACTIVITY_HISTORY` (`HeatAggregatorNoHistoryRuleTest`).
+  - The recorded `evgw` rows on 6.3/6.8/7.1 with their BPMN: `catchB` has 0 executions, 0 %
+    hit, `armedNotTaken` 1, no timing, 0 share, and the shares of the rest add up to 100 %;
+    a loop armed twice and taken once is one of each, with the taken visit's duration; 6.3 says
+    "inferred" in the note; no or unparseable XML gives `structure: UNAVAILABLE`
+    (`HeatAggregatorEventGatewayTest`). The parser finds armed nodes in subprocesses and
+    second pools, includes receive tasks, and refuses a DOCTYPE / external entity without
+    fetching it (`BpmnEventGatewayStructureTest`).
+    Forked, merged, flowless and joined catch events, boundary and event-subprocess starts
+    (`HeatAggregatorEventGatewayEdgeTest`).
   - An over-long instance is dropped and counted.
   - Fewer than 20 samples give `p95Ms=null`.
   - Funnel rows plus `noEndEventCount` add up to the sample.
@@ -508,3 +572,12 @@ Order: 1 → 2 → 3, with 4 after 2. Issue 5 is independent.
    duration with the definition p50. It would reuse this endpoint and the bottom-right
    position.
 8. **Should #677's 6.3 behaviour (§1.1) become its own issue now?**
+
+### Decided 2026-11-18 (owner, on #788)
+
+- **A. Armed catch events are resolved from the BPMN.** A catch event an event-based gateway
+  armed but that did not fire is left out of hit rate, visit count, durations and the share
+  denominator, and reported as `armedNotTaken`; 6.3 infers it from timing and says so; no
+  BPMN means the old counting plus `structure: UNAVAILABLE` (§1.1a). H2 passes the BPMN XML.
+- **B. `NO_ACTIVITY_HISTORY` only if ALL sampled instances are empty.** Otherwise empty
+  instances are dropped and counted (`dropReasons.noActivityHistory`, §2, §3.4).
