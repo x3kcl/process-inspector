@@ -1,5 +1,6 @@
 package io.inspector.dto;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.Instant;
 import java.util.List;
 
@@ -120,5 +121,7 @@ public record DefinitionHeat(
             double sharePct,
             Tier tier) {}
 
+    /** Named apart: the bare schema name "Outcome" is the access-mapping admin DTO in the OpenAPI contract. */
+    @Schema(name = "HeatOutcome")
     public record Outcome(String endEventId, String name, int count, double pct) {}
 }
