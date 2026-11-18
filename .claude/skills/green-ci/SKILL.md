@@ -6,7 +6,7 @@ description: A change is not "done" until GitHub Actions is green on the pull-re
 
 ## 🎯 When to use
 **Before every pull request, and before you merge it.** A change is incomplete until the
-GitHub Actions `ci` workflow is **green on the pull-request head SHA**. "It builds locally"
+GitHub Actions is **green on the pull-request head SHA**: ALL its `pull_request` runs (`ci`, `supply-chain-pr`, ...), not only `ci`; `pr-queue.sh` refuses to label otherwise. "It builds locally"
 and "the push succeeded" are NOT done — only a green remote run is. `main` rejects a direct
 push (repository ruleset). This skill is the definition of done for a change.
 
