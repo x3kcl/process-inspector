@@ -161,6 +161,11 @@ A second definition was deployed on the `audit` engines with
 it recorded **0** historic process instances and **0** activity rows, while the engine's other
 definitions kept full history.
 
+A per-process `<flowable:historyLevel>instance</flowable:historyLevel>` (measured by `HeatIT` /
+`HeatLegacyIT`, #786): 6.8 and 7.1 keep the historic process instance and write **0** activity
+rows (heat says `NO_ACTIVITY_HISTORY`); **6.3.1 ignores it** and writes the start and end rows as
+at its engine level, so heat shows node figures for that definition (`NO_FLOW_HISTORY`).
+
 Consequences:
 
 1. **`activity` is enough.** `activity`, `audit` and `full` return the same activity rows.
@@ -507,6 +512,10 @@ counted per distinct instance.
 - **Engine layer (engine-harness):** seed ~50 instances over REST with lowered caps, on 6.8 and
   7.1, and check that coverage and counts match what was seeded. On 6.3 (legacy profile),
   check `NO_FLOW_HISTORY`.
+  Built in #786: `HeatIT` (6.8 + 7.1), `HeatLegacyIT` (6.3.1), `Heat68IT` (nightly), 23 instances
+  per engine (TEST-STRATEGY §6). On 6.3.1 the endpoint behaved as specified: the sample query
+  (`POST query/historic-process-instances`, `endTime` desc) answers the newest N, and the §1.1a
+  timing inference tells the armed timer from the taken message, with the "inferred" note.
 - **Frontend (vitest):** badge text and tier word, no badge on events or gateways, the
   partial badge whenever `partial`, the coverage message instead of zeros, and the table/canvas
   selection sync.

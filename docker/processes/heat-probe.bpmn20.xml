@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:flowable="http://flowable.org/bpmn"
+             xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+             xmlns:omgdc="http://www.omg.org/spec/DD/20100524/DC"
+             xmlns:omgdi="http://www.omg.org/spec/DD/20100524/DI"
+             typeLanguage="http://www.w3.org/2001/XMLSchema"
+             expressionLanguage="http://www.w3.org/1999/XPath"
+             targetNamespace="http://inspector.io/demo">
+
+  <!-- Definition heat over real engines (HeatITBase, #786). A 3 s timer (the slow step), an
+       event-based gateway arming a message (taken: the IT sends it over REST) and a one-year
+       timer (armed, never taken), then an exclusive gateway on `route`: A and B end at two
+       named end events; any other value takes one extra step, so that instance has more history
+       rows than the others and the IT's page size drops it as too many rows. -->
+  <message id="heatProbeGo" name="heatProbeGo"/>
+  <process id="heatProbe" name="Heat Probe" isExecutable="true">
+    <startEvent id="start" name="Start"/>
+    <sequenceFlow id="f1" sourceRef="start" targetRef="coolDown"/>
+    <intermediateCatchEvent id="coolDown" name="Cool down">
+      <timerEventDefinition>
+        <timeDuration>PT3S</timeDuration>
+      </timerEventDefinition>
+    </intermediateCatchEvent>
+    <sequenceFlow id="f2" sourceRef="coolDown" targetRef="waitGw"/>
+    <eventBasedGateway id="waitGw" name="Wait"/>
+    <sequenceFlow id="f3" sourceRef="waitGw" targetRef="catchGo"/>
+    <sequenceFlow id="f4" sourceRef="waitGw" targetRef="catchYear"/>
+    <intermediateCatchEvent id="catchGo" name="Go signal">
+      <messageEventDefinition messageRef="heatProbeGo"/>
+    </intermediateCatchEvent>
+    <intermediateCatchEvent id="catchYear" name="A year passed">
+      <timerEventDefinition>
+        <timeDuration>P365D</timeDuration>
+      </timerEventDefinition>
+    </intermediateCatchEvent>
+    <sequenceFlow id="f5" sourceRef="catchGo" targetRef="routeGw"/>
+    <sequenceFlow id="f6" sourceRef="catchYear" targetRef="endTimeout"/>
+    <endEvent id="endTimeout" name="Timed out"/>
+    <exclusiveGateway id="routeGw" name="Route" default="fLong"/>
+    <sequenceFlow id="fA" sourceRef="routeGw" targetRef="endA">
+      <conditionExpression xsi:type="tFormalExpression"><![CDATA[${route == 'A'}]]></conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="fB" sourceRef="routeGw" targetRef="endB">
+      <conditionExpression xsi:type="tFormalExpression"><![CDATA[${route == 'B'}]]></conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="fLong" sourceRef="routeGw" targetRef="detour"/>
+    <intermediateThrowEvent id="detour" name="Detour"/>
+    <sequenceFlow id="f7" sourceRef="detour" targetRef="endB"/>
+    <endEvent id="endA" name="Approved"/>
+    <endEvent id="endB" name="Rejected"/>
+  </process>
+
+  <bpmndi:BPMNDiagram id="BPMNDiagram_heatProbe">
+    <bpmndi:BPMNPlane id="BPMNPlane_heatProbe" bpmnElement="heatProbe">
+      <bpmndi:BPMNShape id="BPMNShape_start" bpmnElement="start">
+        <omgdc:Bounds x="100" y="100" width="30" height="30"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_coolDown" bpmnElement="coolDown">
+        <omgdc:Bounds x="180" y="99" width="32" height="32"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_waitGw" bpmnElement="waitGw">
+        <omgdc:Bounds x="260" y="90" width="50" height="50"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_catchGo" bpmnElement="catchGo">
+        <omgdc:Bounds x="360" y="99" width="32" height="32"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_catchYear" bpmnElement="catchYear">
+        <omgdc:Bounds x="360" y="259" width="32" height="32"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_endTimeout" bpmnElement="endTimeout">
+        <omgdc:Bounds x="440" y="261" width="28" height="28"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_routeGw" bpmnElement="routeGw" isMarkerVisible="true">
+        <omgdc:Bounds x="440" y="90" width="50" height="50"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_detour" bpmnElement="detour">
+        <omgdc:Bounds x="500" y="169" width="32" height="32"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_endA" bpmnElement="endA">
+        <omgdc:Bounds x="560" y="31" width="28" height="28"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_endB" bpmnElement="endB">
+        <omgdc:Bounds x="560" y="101" width="28" height="28"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="BPMNEdge_f1" bpmnElement="f1">
+        <omgdi:waypoint x="130" y="115"/>
+        <omgdi:waypoint x="180" y="115"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_f2" bpmnElement="f2">
+        <omgdi:waypoint x="212" y="115"/>
+        <omgdi:waypoint x="260" y="115"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_f3" bpmnElement="f3">
+        <omgdi:waypoint x="310" y="115"/>
+        <omgdi:waypoint x="360" y="115"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_f4" bpmnElement="f4">
+        <omgdi:waypoint x="285" y="140"/>
+        <omgdi:waypoint x="285" y="275"/>
+        <omgdi:waypoint x="360" y="275"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_f5" bpmnElement="f5">
+        <omgdi:waypoint x="392" y="115"/>
+        <omgdi:waypoint x="440" y="115"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_f6" bpmnElement="f6">
+        <omgdi:waypoint x="392" y="275"/>
+        <omgdi:waypoint x="440" y="275"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_fA" bpmnElement="fA">
+        <omgdi:waypoint x="465" y="90"/>
+        <omgdi:waypoint x="465" y="45"/>
+        <omgdi:waypoint x="560" y="45"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_fB" bpmnElement="fB">
+        <omgdi:waypoint x="490" y="115"/>
+        <omgdi:waypoint x="560" y="115"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_fLong" bpmnElement="fLong">
+        <omgdi:waypoint x="465" y="140"/>
+        <omgdi:waypoint x="465" y="185"/>
+        <omgdi:waypoint x="500" y="185"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_f7" bpmnElement="f7">
+        <omgdi:waypoint x="532" y="185"/>
+        <omgdi:waypoint x="574" y="185"/>
+        <omgdi:waypoint x="574" y="129"/>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</definitions>
