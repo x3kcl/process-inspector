@@ -973,7 +973,7 @@ deployment id on prod). Case definitions on a 6.8+ engine appear in the catalog;
 diagram and BPMN job lanes say so instead of pretending to be process definitions.
 Uploading a deployment stays out (§11, decision #505).
 
-**Definition heat (#784, API only; the tab is #785).** `GET
+**Definition heat (#784 API, #785 Heat tab).** `GET
 /api/definitions/{engineId}/{definitionId}/heat?n=&refresh=` answers the `DefinitionHeat` of
 [DEFINITION-HEATMAP.md](DEFINITION-HEATMAP.md) §6 for ONE BPMN definition version: per node
 executions, distinct instances, hit %, `armedNotTaken`, avg/p50/p95/max, share and tier; the
@@ -1609,6 +1609,13 @@ and would rewrite working M1/M2 code for no capability gain); Go/FastAPI/Kotlin 
   fill + `✓` glyph, armed-not-taken = dashed outline, duration = text badge (`slowest` in
   words); every glyph is `role="img"` + `aria-label`; an unrecorded route (#729) is said
   in a text notice, not by the missing stroke alone.
+  Definition heat (#785, Heat tab): a text badge inside the shape (bottom 4, right 4, clear of
+  every glyph above; tasks, sub-processes, call activities, and any node an event gateway armed
+  without firing) carries the figure (`avg 1.2 s · 62 %`), the tier word (`dominant` / `warm`)
+  and `armed in N, taken in M`; the tier is also a border (heavy solid, solid, dashed). The
+  sample size, drops with reasons, `asOf`, the partial badge, and the no-route / no-activity-
+  history / unreadable-model / no-finished-instances states are all text; a refused refresh
+  shows the server's `refreshThrottledUntil`.
   Contrast 4.5:1 text / 3:1 non-text. Every diagram-borne fact has a keyboard-focusable
   textual twin (activity summary list with synced selection); canvas is `role="img"` with a
   generated summary. AG Grid: full keyboard nav; row-open is never mouse-only — Enter on

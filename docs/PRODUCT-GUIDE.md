@@ -434,6 +434,20 @@ diagram (`+` added, `~` changed) and lists what was removed. That diff is the in
 reading of the XML, not Flowable validating a migration. **Migrate** jumps to the existing
 version on-ramp.
 
+**Heat** shows where one version spends its time, from a sample of its newest finished
+instances (pick the version and a sample size of 200, 500 or 1000; each size is a separate
+read of the engine, so there is no free number). Tasks, sub-processes and call activities
+carry a badge with their average duration, hit rate and a tier word (`dominant`, `warm`,
+`cool`), plus a border: heavy solid, solid, dashed. A step an event gateway armed but did not
+fire says `armed in N, taken in M`. The table lists every node (hit rate, average, p50, p95);
+click a name to select it on the diagram, or click the diagram to select its row. The funnel
+below shows how instances ended, one row per end event. Read the text above the diagram first:
+it says how many instances were sampled of how many finished, what was dropped and why, when
+the figures were read, and when the engine records no route or no activity history. **Refresh**
+reads again, at most once a minute per version; when the server refuses, it says when you may
+try again. A version with no finished instance says so; it cannot tell that from an engine that
+keeps no history.
+
 **Suspend definition** / **Activate definition** are ADMIN. Include running instances only
 when you mean to. A schedule time means the engine waits until then. On a prod engine you
 type the definition key.
