@@ -10,8 +10,10 @@ import com.tngtech.archunit.core.domain.JavaMethodCall;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;
 import io.inspector.registry.EngineRegistry;
+import io.inspector.security.RbacAuthorizer;
 import io.inspector.security.ReadScopeGate;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.lang.reflect.Parameter;
 import java.util.ArrayDeque;
 import java.util.Arrays;
@@ -21,8 +23,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -30,7 +34,8 @@ import org.springframework.web.bind.annotation.RestController;
  * #752 (R-SAFE-17): the stricter sibling of {@link EngineScopedRouteGuardArchTest}. A per-engine
  * route must carry a ROLE expression ({@code @PreAuthorize}, method or class) — the read-scope
  * gate alone is a no-op with {@code scope-reads-enforced} off, leaving the route open to any
- * signed-in user. Routes that still lack one are named in {@link #EXCEPTIONS} with the reason; a
+ * signed-in user. Since #791 the expression must also be a real role/grant check through the RBAC
+ * bean: {@code isAuthenticated()} / {@code authenticated} / {@code permitAll} never count. Routes that still lack one are named in {@link #EXCEPTIONS} with the reason; a
  * NEW route cannot join them silently, and a fixed one must leave the list (no stale entries).
  */
 class EngineRoleExpressionGuardArchTest {
@@ -68,12 +73,30 @@ class EngineRoleExpressionGuardArchTest {
                         .map(c -> c.substring(0, c.lastIndexOf('.')))
                         .anyMatch(owner -> !owner.equals(controller.getName()) && holdsReadScope(owner));
                 if ((takesEngine(controller, route) || iterates || scoped)
-                        && preAuthorize(controller, route).isEmpty()) {
+                        && !isRoleExpression(preAuthorize(controller, route))) {
                     noRole.put(controller.getSimpleName() + "." + route.getName(), "no role expression");
                 }
             }
         }
         assertThat(noRole.keySet()).containsExactlyInAnyOrderElementsOf(expected);
+    }
+
+    /**
+     * #791: the RBAC bean's own boolean {@code (Authentication, …)} entry points — derived, so a new
+     * gate such as {@code canReadMetrics} is accepted without touching the guard.
+     */
+    private static final Set<String> RBAC_GATES = Arrays.stream(RbacAuthorizer.class.getDeclaredMethods())
+            .filter(m -> Modifier.isPublic(m.getModifiers())
+                    && m.getReturnType() == boolean.class
+                    && m.getParameterCount() > 0
+                    && m.getParameterTypes()[0] == Authentication.class)
+            .map(Method::getName)
+            .collect(Collectors.toSet());
+
+    /** A role/grant check through {@code @rbac.<gate>(…)}; signed-in / open expressions never count. */
+    static boolean isRoleExpression(String expr) {
+        return RBAC_GATES.stream().anyMatch(g -> expr.contains("@rbac." + g + "("))
+                && !expr.matches("(?s).*\\b(isAuthenticated|authenticated|permitAll|isAnonymous|anonymous)\\b.*");
     }
 
     private static boolean holdsReadScope(String owner) {
