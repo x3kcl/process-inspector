@@ -5,7 +5,10 @@ import io.inspector.dto.DefinitionHeat;
 import io.inspector.dto.DefinitionHeat.Coverage;
 import io.inspector.dto.DefinitionHeat.NodeHeat;
 import io.inspector.dto.DefinitionHeat.Outcome;
+import io.inspector.dto.DefinitionHeat.Structure;
 import io.inspector.dto.DefinitionHeat.Tier;
+import io.inspector.surgery.BpmnStructure;
+import io.inspector.surgery.BpmnStructure.Flow;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
@@ -15,6 +18,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 /** Pure aggregation of per-instance historic activity rows into {@link DefinitionHeat}. */
 public final class HeatAggregator {
@@ -24,6 +28,11 @@ public final class HeatAggregator {
     /** One sampled instance: the rows read, the engine's {@code total}, and whether the read failed. */
     public record Instance(List<ActivityInstanceRecord> rows, long totalRows, boolean readFailed) {}
 
+    /**
+     * {@code bpmnXml}: the deployed BPMN of {@code definitionId}; it resolves event-gateway catch
+     * events armed but not taken. Null or unparseable: they count as visits and the result says
+     * {@link Structure#UNAVAILABLE}.
+     */
     public record Sample(
             String engineId,
             String definitionId,
@@ -51,11 +60,14 @@ public final class HeatAggregator {
 
     private static final String FLOW = "sequenceFlow";
     private static final int P95_FLOOR = 20;
+    private static final String INFERRED_NOTE =
+            "; event-gateway branches inferred from timing, this engine records no routes";
 
     private static final class Acc {
         String name;
         String type;
         int executions;
+        int armed;
         int instances;
         int lastInstance = -1;
         long total;
@@ -85,8 +97,10 @@ public final class HeatAggregator {
                 ? Coverage.NO_HISTORY
                 : noActivity ? Coverage.NO_ACTIVITY_HISTORY : anyFlow ? Coverage.FULL : Coverage.NO_FLOW_HISTORY;
         boolean figures = coverage == Coverage.FULL || coverage == Coverage.NO_FLOW_HISTORY;
+        Map<String, List<Flow>> catches = catches(s.bpmnXml());
+        boolean[] inferred = {false};
 
-        List<NodeHeat> nodes = figures ? nodes(ok) : List.of();
+        List<NodeHeat> nodes = figures ? nodes(ok, catches == null ? Map.of() : catches, inferred) : List.of();
         List<Outcome> outcomes = new ArrayList<>();
         int noEnd = 0;
         if (figures) {
@@ -99,7 +113,7 @@ public final class HeatAggregator {
                 s.asOf(),
                 false,
                 coverage,
-                null,
+                catches == null ? Structure.UNAVAILABLE : Structure.RESOLVED,
                 s.requestedN(),
                 sampled,
                 s.finishedTotal(),
@@ -111,18 +125,33 @@ public final class HeatAggregator {
                 nodes,
                 outcomes,
                 noEnd,
-                "Newest %d of %d finished instances (sample, not the full history)%s."
+                "Newest %d of %d finished instances (sample, not the full history)%s%s."
                         .formatted(
                                 sampled,
                                 s.finishedTotal(),
                                 dropped > 0
                                         ? "; %d dropped, figures over the remaining %d".formatted(dropped, ok.size())
-                                        : ""));
+                                        : "",
+                                inferred[0] ? INFERRED_NOTE : ""));
     }
 
-    private static List<NodeHeat> nodes(List<List<ActivityInstanceRecord>> ok) {
+    /** The armable catch events of the BPMN, or null when it is absent or unparseable. */
+    private static Map<String, List<Flow>> catches(String bpmnXml) {
+        if (bpmnXml == null) {
+            return null;
+        }
+        try {
+            return BpmnStructure.fromXml(bpmnXml).eventGatewayCatches();
+        } catch (IllegalStateException e) {
+            return null; // reported as Structure.UNAVAILABLE, never silently
+        }
+    }
+
+    private static List<NodeHeat> nodes(
+            List<List<ActivityInstanceRecord>> ok, Map<String, List<Flow>> catches, boolean[] inferred) {
         Map<String, Acc> accs = new LinkedHashMap<>();
         for (int idx = 0; idx < ok.size(); idx++) {
+            Set<ActivityInstanceRecord> armed = ArmedCatchEvents.of(ok.get(idx), catches, inferred);
             for (ActivityInstanceRecord r : ok.get(idx)) {
                 if (FLOW.equals(r.activityType()) || r.activityId() == null) {
                     continue;
@@ -133,6 +162,10 @@ public final class HeatAggregator {
                 }
                 if (a.type == null) {
                     a.type = r.activityType();
+                }
+                if (armed.contains(r)) {
+                    a.armed++;
+                    continue;
                 }
                 a.executions++;
                 if (a.lastInstance != idx) {
@@ -167,7 +200,7 @@ public final class HeatAggregator {
                 a.executions,
                 a.instances,
                 a.instances * 100.0 / analysed,
-                0,
+                a.armed,
                 avg,
                 any ? nearestRank(sorted, 50) : null,
                 sorted.size() >= P95_FLOOR ? nearestRank(sorted, 95) : null,

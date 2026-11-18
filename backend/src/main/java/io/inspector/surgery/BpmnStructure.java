@@ -44,6 +44,9 @@ public final class BpmnStructure {
     /** Container elements whose children are flow nodes of a NESTED scope. */
     private static final Set<String> SCOPE_TYPES = Set.of("subProcess", "transaction", "adHocSubProcess");
 
+    /** What an event-based gateway may arm (BPMN 2.0 §10.6.6). */
+    private static final Set<String> ARMABLE_TYPES = Set.of("intermediateCatchEvent", "receiveTask");
+
     /** Model-namespace children that are not flow nodes despite carrying an id. */
     private static final Set<String> NON_NODE_TYPES = Set.of(
             "sequenceFlow",
@@ -72,6 +75,7 @@ public final class BpmnStructure {
     private final Set<String> parallelJoins;
     private final Map<String, List<String>> incoming; // node id -> source node ids (same scope)
     private final Map<String, String> scopeOf; // node id -> enclosing subprocess id (null = process root)
+    private final Map<String, List<Flow>> eventGatewayCatches;
 
     private BpmnStructure(
             Map<String, FlowNode> nodes,
@@ -79,13 +83,15 @@ public final class BpmnStructure {
             Set<String> parallelForks,
             Set<String> parallelJoins,
             Map<String, List<String>> incoming,
-            Map<String, String> scopeOf) {
+            Map<String, String> scopeOf,
+            Map<String, List<Flow>> eventGatewayCatches) {
         this.nodes = nodes;
         this.miScopeOf = miScopeOf;
         this.parallelForks = parallelForks;
         this.parallelJoins = parallelJoins;
         this.incoming = incoming;
         this.scopeOf = scopeOf;
+        this.eventGatewayCatches = eventGatewayCatches;
     }
 
     public Optional<FlowNode> node(String activityId) {
@@ -162,7 +168,7 @@ public final class BpmnStructure {
      * event from a taken one.
      */
     public Map<String, List<Flow>> eventGatewayCatches() {
-        return Map.of(); // RED stub
+        return eventGatewayCatches;
     }
 
     /* --------------------------------- parsing --------------------------------- */
@@ -182,6 +188,7 @@ public final class BpmnStructure {
         Map<String, Integer> outgoingCount = new LinkedHashMap<>();
         Map<String, Integer> incomingCount = new LinkedHashMap<>();
         Map<String, String> scopeOf = new LinkedHashMap<>();
+        Map<String, List<Flow>> outgoing = new LinkedHashMap<>();
 
         Document doc = parseXml(bpmnXml);
         NodeList processes = doc.getElementsByTagNameNS(MODEL_NS, "process");
@@ -194,7 +201,8 @@ public final class BpmnStructure {
                     incoming,
                     outgoingCount,
                     incomingCount,
-                    scopeOf);
+                    scopeOf,
+                    outgoing);
         }
 
         Set<String> forks = new HashSet<>();
@@ -207,7 +215,19 @@ public final class BpmnStructure {
                 joins.add(gw);
             }
         }
-        return new BpmnStructure(nodes, miScopeOf, forks, joins, incoming, scopeOf);
+        Map<String, List<Flow>> catches = new LinkedHashMap<>();
+        outgoing.forEach((source, flows) -> {
+            if (nodes.containsKey(source)
+                    && "eventBasedGateway".equals(nodes.get(source).type())) {
+                for (Flow f : flows) {
+                    FlowNode target = nodes.get(f.target());
+                    if (target != null && ARMABLE_TYPES.contains(target.type())) {
+                        catches.put(target.id(), outgoing.getOrDefault(target.id(), List.of()));
+                    }
+                }
+            }
+        });
+        return new BpmnStructure(nodes, miScopeOf, forks, joins, incoming, scopeOf, Map.copyOf(catches));
     }
 
     /**
@@ -256,7 +276,8 @@ public final class BpmnStructure {
             Map<String, List<String>> incoming,
             Map<String, Integer> outgoingCount,
             Map<String, Integer> incomingCount,
-            Map<String, String> scopeOf) {
+            Map<String, String> scopeOf,
+            Map<String, List<Flow>> outgoing) {
         for (Node child = scope.getFirstChild(); child != null; child = child.getNextSibling()) {
             if (!(child instanceof Element el) || !MODEL_NS.equals(el.getNamespaceURI())) {
                 continue;
@@ -269,6 +290,7 @@ public final class BpmnStructure {
                 incoming.computeIfAbsent(target, k -> new ArrayList<>()).add(source);
                 outgoingCount.merge(source, 1, Integer::sum);
                 incomingCount.merge(target, 1, Integer::sum);
+                outgoing.computeIfAbsent(source, k -> new ArrayList<>()).add(new Flow(id, target));
                 continue;
             }
             if (id.isBlank() || NON_NODE_TYPES.contains(type)) {
@@ -282,7 +304,7 @@ public final class BpmnStructure {
                 parallelGateways.add(id);
             }
             if (SCOPE_TYPES.contains(type)) {
-                walkScope(el, id, nodes, parallelGateways, incoming, outgoingCount, incomingCount, scopeOf);
+                walkScope(el, id, nodes, parallelGateways, incoming, outgoingCount, incomingCount, scopeOf, outgoing);
             }
         }
     }
