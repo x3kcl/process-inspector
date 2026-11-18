@@ -25,6 +25,7 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
+import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -93,10 +94,15 @@ class EngineRoleExpressionGuardArchTest {
             .map(Method::getName)
             .collect(Collectors.toSet());
 
-    /** A role/grant check through {@code @rbac.<gate>(…)}; signed-in / open expressions never count. */
+    /**
+     * A role/grant check through {@code @rbac.<gate>(…)}: the expression is gate calls joined only by
+     * {@code and}/{@code or} and parentheses, so no term (true, isAuthenticated(), hasRole, a negation,
+     * a literal) can admit a caller who passes no gate.
+     */
     static boolean isRoleExpression(String expr) {
-        return RBAC_GATES.stream().anyMatch(g -> expr.contains("@rbac." + g + "("))
-                && !expr.matches("(?s).*\\b(isAuthenticated|authenticated|permitAll|isAnonymous|anonymous)\\b.*");
+        String rest = expr.replaceAll("@rbac\\.(" + String.join("|", RBAC_GATES) + ")\\([^()]*\\)", "G")
+                .replaceAll("\\b(and|or)\\b|&&|\\|\\|", " ");
+        return rest.contains("G") && rest.matches("[G()\\s]+");
     }
 
     private static boolean holdsReadScope(String owner) {
@@ -141,14 +147,13 @@ class EngineRoleExpressionGuardArchTest {
     }
 
     private static String preAuthorize(JavaClass controller, JavaMethod m) {
-        PreAuthorize own = ((Method) m.reflect()).getAnnotation(PreAuthorize.class);
+        // Merged lookup, as Spring resolves it: a meta-annotation on the method wins over the class.
+        PreAuthorize own = AnnotatedElementUtils.findMergedAnnotation((Method) m.reflect(), PreAuthorize.class);
         if (own != null) {
             return own.value();
         }
-        return controller
-                .tryGetAnnotationOfType(PreAuthorize.class)
-                .map(PreAuthorize::value)
-                .orElse("");
+        PreAuthorize onClass = AnnotatedElementUtils.findMergedAnnotation(controller.reflect(), PreAuthorize.class);
+        return onClass == null ? "" : onClass.value();
     }
 
     /** Owner.name of every call the route makes, through its own class's helpers and lambdas. */
