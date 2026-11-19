@@ -309,6 +309,8 @@ applies every time. Three kinds of incompleteness are reported separately, never
 
 1. **Sampled, not all:** `sampledInstances < finishedTotal`. A permanent caption on the tab:
    *"Newest 200 of 10 000 finished instances (ended 2026-11-10 → 2026-11-17)."*
+   When every finished instance of the version was read it is not a sample and the note says so:
+   *"All 4 finished instances."* (*"The 1 finished instance."*).
 2. **Dropped instances:** an instance had more rows than one page (`tooManyRows`), its read
    failed (`readFailed`: bulkhead full, timeout, open breaker), or it has no activity row while
    others in the sample do (`noActivityHistory`, decision B). It is excluded, never counted half-read, and reported as
