@@ -83,10 +83,9 @@ class HeatAggregatorNoHistoryRuleTest {
         assertThat(node(h, "t").hitPct()).isEqualTo(100.0);
         assertThat(h.outcomes().get(0).count() + h.noEndEventCount()).isEqualTo(n - empty);
         assertThat(h.samplingNote())
-                .isEqualTo("Newest %d of %d finished instances (sample, not the full history)%s."
+                .isEqualTo("%s%s."
                         .formatted(
-                                n,
-                                n,
+                                n == 1 ? "The 1 finished instance" : "All %d finished instances".formatted(n),
                                 empty > 0
                                         ? "; %d dropped, figures over the remaining %d".formatted(empty, n - empty)
                                         : ""));

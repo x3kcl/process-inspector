@@ -39,7 +39,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 class HeatAggregatorEventGatewayTest {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
-    private static final String BASE_NOTE = "Newest 1 of 1 finished instances (sample, not the full history)";
+    private static final String BASE_NOTE = "The 1 finished instance";
     private static final String INFERRED =
             "; event-gateway branches inferred from timing, this engine records no routes";
 
