@@ -133,14 +133,21 @@ public final class HeatAggregator {
                 nodes,
                 outcomes,
                 noEnd,
-                "Newest %d of %d finished instances (sample, not the full history)%s%s."
+                "%s%s%s."
                         .formatted(
-                                sampled,
-                                s.finishedTotal(),
+                                sampledNote(sampled, s.finishedTotal()),
                                 dropped > 0
                                         ? "; %d dropped, figures over the remaining %d".formatted(dropped, ok.size())
                                         : "",
                                 inferred[0] ? INFERRED_NOTE : ""));
+    }
+
+    /** A complete read is not a sample: "All N" when every finished instance was read. */
+    private static String sampledNote(int sampled, long finishedTotal) {
+        if (sampled > 0 && sampled == finishedTotal) {
+            return sampled == 1 ? "The 1 finished instance" : "All %d finished instances".formatted(sampled);
+        }
+        return "Newest %d of %d finished instances (sample, not the full history)".formatted(sampled, finishedTotal);
     }
 
     /** The armable catch events of the BPMN, or null when it is absent, unparseable or unresolvable. */
