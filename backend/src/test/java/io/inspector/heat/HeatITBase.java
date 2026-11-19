@@ -210,7 +210,7 @@ abstract class HeatITBase {
             assertThat(h.path("partial").asBoolean()).as(id).isTrue();
             assertThat(h.path("samplingNote").asText())
                     .as(id)
-                    .isEqualTo("Newest 23 of 23 finished instances (sample, not the full history); 1 dropped, "
+                    .isEqualTo("All 23 finished instances; 1 dropped, "
                             + "figures over the remaining 22"
                             + (e.routes()
                                     ? ""
