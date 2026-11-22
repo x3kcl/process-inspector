@@ -65,6 +65,11 @@ public class SecurityConfig {
     @org.springframework.beans.factory.annotation.Value("${INSPECTOR_BREAK_GLASS_PASSWORD:}")
     private String breakGlassPassword;
 
+    // The documented dev-ladder sign-in variable, an env ref like the one above. It fills
+    // inspector.security.dev-password only when that property (INSPECTOR_SECURITY_DEVPASSWORD) is unset.
+    @org.springframework.beans.factory.annotation.Value("${INSPECTOR_DEV_PASSWORD:}")
+    private String devPasswordEnv;
+
     public SecurityConfig(
             HttpHardeningProperties hardening,
             java.time.Clock clock,
@@ -237,7 +242,7 @@ public class SecurityConfig {
                         .build());
         Map<String, String> passwords = DevLogins.passwords(
                 ladder.stream().map(UserDetails::getUsername).toList(),
-                props.devPassword(),
+                props.devPassword() != null && !props.devPassword().isBlank() ? props.devPassword() : devPasswordEnv,
                 publicLogins.publicPassword(),
                 publicLogins.publicUsers());
         return new InMemoryUserDetailsManager(ladder.stream()
