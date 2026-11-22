@@ -4,6 +4,8 @@ import static org.springframework.security.config.Customizer.withDefaults;
 
 import io.inspector.security.reauth.ReauthAuthorizationRequestResolver;
 import io.inspector.security.reauth.ReauthConformantOidcUserService;
+import java.util.List;
+import java.util.Map;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
@@ -15,7 +17,9 @@ import org.springframework.security.config.annotation.method.configuration.Enabl
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.core.userdetails.User;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
@@ -179,36 +183,34 @@ public class SecurityConfig {
 
     /**
      * Dev/test logins, one per ladder rung. The password is a dev convenience
-     * ({@code INSPECTOR_DEV_PASSWORD}, default "dev") — this chain never runs in prod,
-     * where the {@code oidc} profile replaces it entirely.
+     * ({@code inspector.security.dev-password}, env {@code INSPECTOR_SECURITY_DEVPASSWORD}, default
+     * "dev") — this chain never runs in prod, where the {@code oidc} profile replaces it entirely. A
+     * demo may give some users a separate public password ({@link PublicLoginProperties}); the
+     * per-user split and its startup refusals are {@link DevLogins#passwords}.
      */
     @Bean
     @Profile("!oidc")
-    UserDetailsService devUsers(SecurityProperties props) {
-        String password = "{noop}" + props.devPasswordOrDefault();
-        return new InMemoryUserDetailsManager(
+    UserDetailsService devUsers(SecurityProperties props, PublicLoginProperties publicLogins) {
+        List<UserDetails> ladder = List.of(
                 User.withUsername("viewer")
-                        .password(password)
+                        .password("")
                         .roles(Role.VIEWER.name())
                         .build(),
                 User.withUsername("responder")
-                        .password(password)
+                        .password("")
                         .roles(Role.RESPONDER.name())
                         .build(),
                 User.withUsername("operator")
-                        .password(password)
+                        .password("")
                         .roles(Role.OPERATOR.name())
                         .build(),
-                User.withUsername("admin")
-                        .password(password)
-                        .roles(Role.ADMIN.name())
-                        .build(),
+                User.withUsername("admin").password("").roles(Role.ADMIN.name()).build(),
                 // Fleet REGISTRY_ADMIN (v2 Registry CRUD, R-SAFE-13) — ORTHOGONAL to the ladder, so
                 // this user is NOT an engine ADMIN, and the `admin` user above is NOT a registry
                 // admin. `.authorities` (not `.roles`) so ROLE_REGISTRY_ADMIN stays outside the
                 // ROLE_ADMIN>… hierarchy. Also VIEWER so they can load the SPA to reach the panel.
                 User.withUsername("registry-admin")
-                        .password(password)
+                        .password("")
                         .authorities(RbacAuthorizer.REGISTRY_ADMIN_AUTHORITY, "ROLE_" + Role.VIEWER.name())
                         .build(),
                 // A SECOND independent REGISTRY_ADMIN (Registry S4b four-eyes, R-SAFE-08, #91): dev/test
@@ -217,22 +219,39 @@ public class SecurityConfig {
                 // dev/demo/IT session exercise propose (as registry-admin) → approve (as this user)
                 // without needing a DB-mode mapping fixture with two real REGISTRY_ADMIN groups.
                 User.withUsername("registry-admin-2")
-                        .password(password)
+                        .password("")
                         .authorities(RbacAuthorizer.REGISTRY_ADMIN_AUTHORITY, "ROLE_" + Role.VIEWER.name())
                         .build(),
                 // Fleet ACCESS_ADMIN (v2 IdP-Security, R-SAFE-14) — the apex, ORTHOGONAL to the ladder
                 // and to REGISTRY_ADMIN. NOT an engine ADMIN and NOT a registry admin. VIEWER too so
                 // they can load the SPA to reach /admin/access.
                 User.withUsername("access-admin")
-                        .password(password)
+                        .password("")
                         .authorities(RbacAuthorizer.ACCESS_ADMIN_AUTHORITY, "ROLE_" + Role.VIEWER.name())
                         .build(),
                 // Fleet METRICS (#772) — the scraper account: reads /actuator/prometheus and
                 // /actuator/info and nothing else (no ladder rung, so every data read refuses it).
                 User.withUsername("metrics")
-                        .password(password)
+                        .password("")
                         .authorities(RbacAuthorizer.METRICS_AUTHORITY)
                         .build());
+        Map<String, String> passwords = DevLogins.passwords(
+                ladder.stream().map(UserDetails::getUsername).toList(),
+                props.devPassword(),
+                publicLogins.publicPassword(),
+                publicLogins.publicUsers());
+        return new InMemoryUserDetailsManager(ladder.stream()
+                .map(user -> User.withUserDetails(user)
+                        .password(passwords.get(user.getUsername()))
+                        .build())
+                .toList());
+    }
+
+    /** The dev ladder's password check: constant-time ({@link DevLogins#ENCODER}). */
+    @Bean
+    @Profile("!oidc")
+    PasswordEncoder devPasswordEncoder() {
+        return DevLogins.ENCODER;
     }
 
     @Bean
