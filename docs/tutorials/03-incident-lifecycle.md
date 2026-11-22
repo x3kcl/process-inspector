@@ -1,6 +1,6 @@
 # Tutorial 03 — Incident lifecycle: resolve, quiet, REGRESSED — and ack vs. resolve
 
-**Sign in as:** `operator` (password `dev`) at <https://pi.naumann.cloud>. Resolve/reopen
+**Sign in as:** `operator` (public demo password `demo`) at <https://pi.naumann.cloud>. Resolve/reopen
 are OPERATOR verbs; the list and detail are readable by any VIEWER.
 
 **You will learn:** what the incident ledger remembers that Stage 0 forgets, what Resolve

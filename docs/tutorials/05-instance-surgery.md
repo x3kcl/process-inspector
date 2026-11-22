@@ -1,7 +1,7 @@
 # Tutorial 05 — Instance surgery: fix the data, retry the job, pause the case, preview a migration
 
-**Sign in as:** `operator` (password `dev`) at <https://pi.naumann.cloud>; step 8 switches
-to `admin`.
+**Sign in as:** `operator` (public demo password `demo`) at <https://pi.naumann.cloud>; step 8
+switches to `admin`, which is not a public demo login — run that step on the local dev compose (password `dev`, loopback only).
 
 **You will learn:** the FIND → DIAGNOSE → FIX → VERIFY arc on a single instance — the
 typed variable editor with compare-and-set, the offered-never-automatic retry, tier-0

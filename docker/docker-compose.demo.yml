@@ -16,8 +16,10 @@
 #   seed (one-shot) deploys the demo processes + starts one instance per status arc.
 #
 # Only `frontend` is exposed; the BFF, engines and DB have NO host ports and never touch the
-# discovery network. Sign in with the ladder users viewer/responder/operator/admin
-# (password = INSPECTOR_DEV_PASSWORD from the secrets file).
+# discovery network. Sign-in: the PUBLIC demo users (PI_DEMO_PUBLIC_USERS in docker/.env.demo,
+# default viewer/responder/operator) use PI_DEMO_PUBLIC_PASSWORD; every other user (admin,
+# registry-admin, registry-admin-2, access-admin, metrics) keeps INSPECTOR_DEV_PASSWORD from the
+# secrets file. See docker/DEMO-DEPLOY.md "Sign-in".
 #
 # ⚠️ issue #377 (READ THIS before you `--force-recreate` an engine): each engine now carries
 # its own named volume over flowable-rest's embedded H2 datastore — see the per-service
@@ -35,7 +37,7 @@
 # ~/.config/process-inspector-demo/secrets.env (deploy-demo.sh / rollback-demo.sh pass it):
 #   ENGINE_A_PASSWORD, ENGINE_B_PASSWORD, ENGINE_7_PASSWORD   flowable-rest admin, per engine
 #   POSTGRES_PASSWORD                                          BFF database role
-#   INSPECTOR_DEV_PASSWORD                                     sign-in password
+#   INSPECTOR_DEV_PASSWORD                                     private sign-in password
 # None has a default: compose refuses to start without them, so the images' well-known
 # rest-admin/test login never exists on this stack. No service publishes a host port.
 name: process-inspector-demo
@@ -331,10 +333,17 @@ services:
       - ENGINE_A_PASSWORD=${ENGINE_A_PASSWORD:?ENGINE_A_PASSWORD is unset}
       - ENGINE_B_PASSWORD=${ENGINE_B_PASSWORD:?ENGINE_B_PASSWORD is unset}
       - ENGINE_7_PASSWORD=${ENGINE_7_PASSWORD:?ENGINE_7_PASSWORD is unset}
-      # Demo sign-in ladder password (dev auth chain; oidc profile is off here). The BFF binds
-      # `inspector.security.dev-password`, i.e. INSPECTOR_SECURITY_DEVPASSWORD — nothing maps
-      # INSPECTOR_DEV_PASSWORD onto it, so without this line the password silently stays "dev".
+      # Private sign-in password of the dev auth chain (oidc profile is off here). Set as
+      # INSPECTOR_SECURITY_DEVPASSWORD, the name of `inspector.security.dev-password` itself, so
+      # it takes precedence over any other source.
       - INSPECTOR_SECURITY_DEVPASSWORD=${INSPECTOR_DEV_PASSWORD:?INSPECTOR_DEV_PASSWORD is unset — see docker/DEMO-DEPLOY.md}
+      # Public demo logins: the listed users sign in with the public password ONLY, everyone
+      # else with the private one above ONLY. Both come from docker/.env.demo (public by
+      # definition; the secrets file may override). Both empty = no public logins (fail-closed:
+      # an older .env.demo restored by rollback-demo.sh simply has none). Half set, or a public
+      # password equal to the private one, stops the BFF at startup.
+      - INSPECTOR_SECURITY_PUBLICPASSWORD=${PI_DEMO_PUBLIC_PASSWORD:-}
+      - INSPECTOR_SECURITY_PUBLICUSERS=${PI_DEMO_PUBLIC_USERS:-}
       # Tracing stays off on a normal up. Compose cannot set these only when the
       # observability profile is active — pass them with that profile (OPERATIONS §2).
       # The published demo digest does not contain engine.corrective until the next image.

@@ -1,7 +1,7 @@
 # Tutorial 04 — Deep search & views: filters, the depth wall, saved and team views
 
-**Sign in as:** `viewer` (password `dev`) at <https://pi.naumann.cloud> for steps 1–7;
-step 8 (publish to team) needs `operator`.
+**Sign in as:** `viewer` (public demo password `demo`) at <https://pi.naumann.cloud> for steps
+1–7; step 8 (publish to team) needs `operator` (same password).
 
 **You will learn:** how search state lives in the URL, how deep paging stays honest at its
 depth cap, and how private, system, and team views relate.

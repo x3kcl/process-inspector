@@ -216,6 +216,27 @@ section will be updated again once it has.
 
 ## 5. Deploys (R-OPS-05, R-SEM-16/17)
 
+### Dev-ladder sign-in (non-`oidc` deploys, e.g. the demo)
+
+Without the `oidc` profile the BFF signs users in against its built-in ladder (`viewer`,
+`responder`, `operator`, `admin`, `registry-admin`, `registry-admin-2`, `access-admin`,
+`metrics`). Passwords:
+
+| Property (env) | Meaning |
+|---|---|
+| `inspector.security.dev-password` (`INSPECTOR_DEV_PASSWORD`, or `INSPECTOR_SECURITY_DEVPASSWORD` which wins) | The private password. Unset = `dev`, acceptable only on a loopback-bound local stack. |
+| `inspector.security.public-password` (`INSPECTOR_SECURITY_PUBLICPASSWORD`) | Optional public password. |
+| `inspector.security.public-users` (`INSPECTOR_SECURITY_PUBLICUSERS`, comma list) | The users that sign in with the public password. |
+
+Both public settings unset: every user has the private password. Both set: a listed user signs
+in with the public password ONLY, every other user with the private one ONLY. Startup fails when
+only one of the two is set, when a listed name is not a ladder user, when the public password
+equals the private one, or when the private password is not set explicitly (the unlisted users
+would otherwise fall back to `dev`). Passwords are compared in constant time. Publish only users
+whose actions stay inside the engines' own data (`viewer`, `responder`, `operator`): `admin`
+deletes deployments and releases audit legal holds, `registry-admin`/`registry-admin-2` retarget
+engines, `access-admin` reads the access configuration.
+
 ### Inspector knobs rejected at boot (#476)
 
 A value outside these ranges fails startup and the message names the property. Null keeps the
@@ -787,6 +808,10 @@ default via `docker/.env` `COMPOSE_PROFILES`) / **`flowable-7`** (7.1.0, :8083) 
 Postgres + OIDC stub + reverse proxy with SSE buffering off, forwarded headers on) — the
 M4 dual-auth path, Flyway, and proxy behavior are exercised before prod, not in it.
 Secrets per target: compose `.env` mode 600 gitignored; k8s `Secret` via `envFrom`.
+Every published port of the dev, flapdemo and release compose files binds
+`${PI_BIND_ADDRESS:-127.0.0.1}` (LAN access is the opt-in `PI_BIND_ADDRESS=0.0.0.0`); the default
+credentials in the dev compose are acceptable only because of that. `scripts/check-compose-bind.sh`
+(lint part) fails on a port published without a loopback bind address.
 Container sizing: requests 0.5 CPU/1Gi, limits 2 CPU/2Gi (revisit at M6 load test),
 `-XX:MaxRAMPercentage=75`, OOM heap dump to a mounted volume.
 

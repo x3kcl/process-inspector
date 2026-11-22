@@ -1,7 +1,7 @@
 # Tutorial 06 — Bulk with guardrails: filter scope, the partial-result gate, the destructive tier
 
-**Sign in as:** `operator` (password `dev`) at <https://pi.naumann.cloud> for steps 1–5;
-steps 6–7 need `admin`.
+**Sign in as:** `operator` (public demo password `demo`) at <https://pi.naumann.cloud> for
+steps 1–5; steps 6–7 need `admin`, which is not a public demo login — run them on the local dev compose (password `dev`, loopback only).
 
 **You will learn:** the difference between the four bulk doors, which honesty gates block a
 submission and why, and how far the destructive tier makes you walk before it lets you act.

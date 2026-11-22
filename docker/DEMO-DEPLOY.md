@@ -69,9 +69,38 @@ docker compose -p process-inspector-demo -f docker-compose.demo.yml --env-file .
 docker exec process-inspector-demo-audit-backup-1 /scripts/backup-once.sh   # catch up the gap
 ```
 
-Sign in with the ladder users `viewer` / `responder` / `operator` / `admin`
-(password = `INSPECTOR_DEV_PASSWORD` from the secrets file below). Override the host in
-`docker/.env.demo`.
+Override the host in `docker/.env.demo`.
+
+## Sign-in — public demo users, private administrative users
+
+The demo is for people to try the application, so some logins are public:
+
+| Users | Password | Why |
+|---|---|---|
+| `viewer`, `responder`, `operator` | public: `PI_DEMO_PUBLIC_PASSWORD` in `docker/.env.demo` (proposed `demo`) | everything they can do stays inside the demo engines' data |
+| `admin`, `registry-admin`, `registry-admin-2`, `access-admin`, `metrics` | private: `INSPECTOR_DEV_PASSWORD` in the secrets file | they change the system itself: delete deployments and release audit legal holds (`admin`), retarget engines (`registry-admin*`), read the access configuration (`access-admin`), scrape metrics (`metrics`) |
+
+The list is `PI_DEMO_PUBLIC_USERS` in `docker/.env.demo`; the compose file passes both values to
+the BFF as `inspector.security.public-users` / `inspector.security.public-password` (OPERATIONS
+§5). A public user signs in with the public password only and every other user with the private
+one only. The BFF refuses to start when only one of the two is set, a listed name is not a ladder
+user, or the public password equals the private one. Both empty means no public logins.
+
+The public values live in git because they are public by design: the committed file and the
+docs that advertise them cannot drift apart. The secrets file is passed second, so a value
+there overrides `docker/.env.demo` (for example to rotate the public password without a
+commit). A rollback to a tag older than this setting restores a `.env.demo` without the public
+values, so the public logins stop working and every private login is unaffected.
+
+The private logins stay off the repository: keep them next to the secrets file, in a mode-600
+file in the same mode-700 directory (`~/.config/process-inspector-demo/LOGINS.txt` by
+convention). Never paste them into an issue, a pull request or a commit.
+
+Visitors share one set of public logins, so their changes to the demo data persist until the
+engines are re-seeded. An automatic reset is a follow-up, not built: `docker/seed.sh` is not
+idempotent (it starts new instances on every run), so a scheduled reset must first clear each
+engine's state (its named volume) and then re-run the seed, and the deploy scripts refuse to
+recreate engines on purpose.
 
 ## Secrets — outside git, no defaults
 
@@ -82,7 +111,7 @@ Every password of this stack lives in ONE env file outside the repository, mode 
 ~/.config/process-inspector-demo/secrets.env     # override the path with PI_DEMO_SECRETS_FILE
   ENGINE_A_PASSWORD / ENGINE_B_PASSWORD / ENGINE_7_PASSWORD   flowable-rest admin (user rest-admin)
   POSTGRES_PASSWORD                                           BFF database role
-  INSPECTOR_DEV_PASSWORD                                      sign-in password
+  INSPECTOR_DEV_PASSWORD                                      private sign-in password (administrative users)
 ```
 
 `deploy-demo.sh` and `rollback-demo.sh` refuse to run without it and pass it as a second
@@ -222,10 +251,10 @@ The static SPA (`/`) is served from disk, so it stays 200 even when the BFF is d
 on `/` itself points at Traefik↔frontend (network/port), while a page that loads but whose
 data times out points at the BFF (`backend`).
 
-## No registry-admin account on the demo (#629)
+## No public registry-admin login on the demo (#629)
 
-The demo deliberately has **no `REGISTRY_ADMIN` account**: it is public-facing and a registry
-admin can retarget engines. Registry drift between `application.yml` and the DB is therefore
-not fixed in-app; the boot drift warning names the differing fields instead
-(e.g. `engine-7[enabled: yaml=false db=true]`). The demo compose sets
-`INSPECTOR_ENGINE_7_ENABLED=true` so the YAML side agrees with the DB row.
+The dev ladder always contains `registry-admin` and `registry-admin-2`, but on the demo they
+sign in with the private password only: a registry admin can retarget engines. Registry drift
+between `application.yml` and the DB is therefore not fixed in-app by visitors; the boot drift
+warning names the differing fields instead (e.g. `engine-7[enabled: yaml=false db=true]`). The
+demo compose sets `INSPECTOR_ENGINE_7_ENABLED=true` so the YAML side agrees with the DB row.

@@ -512,16 +512,19 @@ Inspector itself is Apache-2.0 (see the repo README / NOTICE).
   `engine-b` on Flowable 6.8.0, `engine-7` on 7.1.0 — with the ACME demo catalog, including
   deliberately-failing definitions. The split majors are deliberate: capability gating and
   version-divergent behaviour are only visible on a mixed fleet, which is the situation the
-  inspector exists for. Sign-in ladder (password `dev`): `viewer` · `responder` · `operator` ·
-  `admin`, plus the fleet accounts `registry-admin` / `registry-admin-2` / `access-admin`.
+  inspector exists for. Public sign-in (password `demo`): `viewer` · `responder` · `operator`.
+  The administrative personas (`admin`, the fleet accounts `registry-admin` /
+  `registry-admin-2` / `access-admin`, and `metrics`) are not public on the demo — they
+  change the system itself rather than the demo's data; use the local stack for them.
   All three engines are `dev`-tagged, so prod-only guards (typed tokens, mandatory tier-1
   reasons) won't fire there — each tutorial flags what prod adds. It is shared: expect
   other people's fingerprints in the ops log.
 - **The local stack** — the repo's dev compose (`docker compose -f
   docker/docker-compose.dev.yml up -d`, then `bash docker/seed.sh`; README "Quick start"):
   the same two engines on :8081/:8082 plus optional Flowable 7.1 (:8083) and legacy 6.3.1
-  (:8084) profiles for capability-gate spelunking. Required for the flows the demo can't
-  host (full engine onboarding, OIDC/IdP flows).
+  (:8084) profiles for capability-gate spelunking, all ladder users with password `dev`, every
+  port on loopback. Required for the flows the demo can't host (the admin personas, full
+  engine onboarding, OIDC/IdP flows).
 
 | Tutorial | Sign in as | You practice |
 |---|---|---|
@@ -530,6 +533,6 @@ Inspector itself is Apache-2.0 (see the repo README / NOTICE).
 | [03 — Incident lifecycle](tutorials/03-incident-lifecycle.md) | `operator` | Resolve with reason; quiet/REGRESSED; also-acknowledge vs. plain ack |
 | [04 — Deep search & views](tutorials/04-deep-search-and-views.md) | `viewer` | Filters, Load more & the depth wall, saving and sharing views |
 | [05 — Instance surgery](tutorials/05-instance-surgery.md) | `operator` | Variable editor, retry, suspend with reason, migrate preview |
-| [06 — Bulk with guardrails](tutorials/06-bulk-with-guardrails.md) | `operator` (+ `admin`) | Filter-scope bulk, partial-result gate, destructive tier |
-| [07 — Admin onboarding](tutorials/07-admin-onboarding.md) | `registry-admin`, `access-admin` | Engine registration incl. SSRF rails; the grant flow |
+| [06 — Bulk with guardrails](tutorials/06-bulk-with-guardrails.md) | `operator` (+ `admin`, local stack) | Filter-scope bulk, partial-result gate, destructive tier |
+| [07 — Admin onboarding](tutorials/07-admin-onboarding.md) | `registry-admin`, `access-admin` (local stack) | Engine registration incl. SSRF rails; the grant flow |
 | [08 — Handover & audit](tutorials/08-handover-and-audit.md) | `responder` | Notes, copy-for-ticket, shift report, reading the audit trail |

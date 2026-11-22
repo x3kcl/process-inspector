@@ -62,7 +62,8 @@ INSPECTOR_DEV_PASSWORD=pick-one docker compose -f docker-compose.release.yml up 
 | `INSPECTOR_DB_USER` / `INSPECTOR_DB_PASSWORD` | BFF database credentials. |
 | `INSPECTOR_ENGINE_A_BASE_URL` / `INSPECTOR_ENGINE_B_BASE_URL` | Flowable REST base URLs to inspect. |
 | `ENGINE_A_PASSWORD` / `ENGINE_B_PASSWORD` | Per-engine machine-account passwords (env refs only — never in config). |
-| `INSPECTOR_DEV_PASSWORD` | Sign-in password for the dev-auth ladder users (dev/demo profile). |
+| `INSPECTOR_DEV_PASSWORD` | Sign-in password for the dev-auth ladder users (dev/demo profile; `INSPECTOR_SECURITY_DEVPASSWORD` takes precedence). |
+| `INSPECTOR_SECURITY_PUBLICPASSWORD` / `INSPECTOR_SECURITY_PUBLICUSERS` | Optional: a separate password for a comma list of ladder users (e.g. a public demo); every other user keeps the sign-in password above. |
 | `JAVA_TOOL_OPTIONS` | JVM tuning; defaults to `-XX:MaxRAMPercentage=75`. |
 
 Engines are **yours to point at** — unreachable engines are first-class product state, so

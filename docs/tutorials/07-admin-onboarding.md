@@ -1,7 +1,8 @@
 # Tutorial 07 — Admin onboarding: register an engine, understand the access rails
 
-**Sign in as:** `admin` first (step 1), then `registry-admin`, then `access-admin`
-(password `dev`) at <https://pi.naumann.cloud>.
+**Sign in as:** `admin` first (step 1), then `registry-admin`, then `access-admin` — on the local dev compose (password `dev`, loopback only).
+These administrative personas are not public logins on the demo: they change the system
+itself (engine registrations, access grants), not just the demo's data.
 
 **You will learn:** why engine-ADMIN, REGISTRY_ADMIN and ACCESS_ADMIN are three different
 things, how a new engine earns trust (draft → probe → enable), what the SSRF rails refuse

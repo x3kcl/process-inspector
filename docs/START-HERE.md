@@ -49,7 +49,9 @@ npm test
 npm run dev
 ```
 
-Dev sign-in is the built-in ladder (`viewer`, `responder`, `operator`, `admin`, password `dev`).
+Dev sign-in is the built-in ladder (`viewer`, `responder`, `operator`, `admin`, password `dev`) on the
+loopback-bound local stack. On the public demo only `viewer`/`responder`/`operator` are public (password
+`demo`).
 
 Before a pull request, mirror the CI gates with `bash ci/contract.sh ci-light` and make sure a runner slot is up (`scripts/ci-runner.sh ensure`). `main` accepts changes only through a pull request, landed by the queue (`scripts/pr-queue.sh`). The admin bypass on the ruleset is the emergency path, written in [RUNBOOK.md](RUNBOOK.md) §0.
 
