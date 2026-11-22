@@ -26,6 +26,9 @@ export default defineConfig({
     },
   },
   server: {
+    // Loopback by default (Vite's own default, made explicit); LAN access is an opt-in:
+    // PI_BIND_ADDRESS=0.0.0.0 npm run dev. `vite preview` inherits it.
+    host: process.env.PI_BIND_ADDRESS ?? 'localhost',
     port: 5173,
     proxy: {
       '/api': process.env.INSPECTOR_BFF_URL ?? 'http://localhost:8085',

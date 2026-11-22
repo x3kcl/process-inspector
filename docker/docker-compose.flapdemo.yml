@@ -7,7 +7,9 @@
 #   docker compose -f docker/docker-compose.dev.yml --profile flap up -d      # the engine
 #   bash docker/seed.sh                                                       # live data
 #   docker compose -f docker/docker-compose.flapdemo.yml up -d                # the inspector
-#   → UI on http://<host>:${PI_UI_PORT:-9080}, ladder users viewer|responder|operator|admin
+#   → UI on http://localhost:${PI_UI_PORT:-9080}, ladder users viewer|responder|operator|admin
+#     (loopback only by default; PI_BIND_ADDRESS=0.0.0.0 opts in to LAN access — set
+#     PI_UI_PASSWORD first, the default sign-in is fine for loopback only)
 #
 # On hp02 the equivalent stack lives in the cloud user's own compose file, where the engine
 # is production flap and the BFF↔engine link is a dedicated `internal: true` network rather
@@ -38,7 +40,7 @@ services:
       - INSPECTOR_DB_URL=jdbc:postgresql://pi-db:5432/inspector
       - INSPECTOR_DB_USER=inspector
       - INSPECTOR_DB_PASSWORD=${PI_DB_PASSWORD:-inspector}
-      - INSPECTOR_DEV_PASSWORD=${PI_UI_PASSWORD:-dev}
+      - INSPECTOR_SECURITY_DEVPASSWORD=${PI_UI_PASSWORD:-dev}
       # Resolved by NAME from the registry's password-ref; matches the engine service
       # account in docker-compose.dev.yml's `flap` profile.
       - ENGINE_FLAP_PASSWORD=${PROCESS_API_CLIENT_PASSWORD:-harness}
@@ -57,7 +59,7 @@ services:
   pi-web:
     image: ${PI_WEB_IMAGE:-process-inspector-web:local}
     ports:
-      - "${PI_UI_PORT:-9080}:80"
+      - "${PI_BIND_ADDRESS:-127.0.0.1}:${PI_UI_PORT:-9080}:80"
     depends_on: [pi-bff]
     networks: [pi-net]
     restart: unless-stopped

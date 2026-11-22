@@ -20,7 +20,15 @@
 #                 (V1__init.sql) + ddl-auto=validate against it at startup.
 #
 # docker/.env must never contain secrets — it only selects default profiles.
-# Default credentials of the flowable/flowable-rest images: rest-admin / test
+# Default credentials of the flowable/flowable-rest images: rest-admin / test. They (and the
+# harness passwords below) are acceptable ONLY because every port here binds loopback.
+#
+# Bindings: every published port binds ${PI_BIND_ADDRESS:-127.0.0.1}, so the harness is reachable
+# from this machine only (CI slots run with network_mode: host and address it via localhost).
+# LAN access is an explicit opt-in, e.g. PI_BIND_ADDRESS=0.0.0.0 — never with the default
+# credentials on a shared network. A container that needs an engine joins this compose network
+# and uses the service name (engine-a:8080), not the host port. scripts/check-compose-bind.sh
+# fails CI on a port published without a loopback bind address.
 #
 # Explicit project name: without it compose derives "docker" from the directory name,
 # which collides with any other compose project living in a directory called docker/.
@@ -33,7 +41,7 @@ services:
       # Host port is env-overridable (default = the doctrinal dev port) so a self-hosted
       # runner can bind a free port without colliding with an already-up dev/demo stack
       # on the same Docker daemon. Dev/local keep 8081 via the default.
-      - "${PI_ENGINE_A_PORT:-8081}:8080"
+      - "${PI_BIND_ADDRESS:-127.0.0.1}:${PI_ENGINE_A_PORT:-8081}:8080"
     environment:
       - FLOWABLE_REST_APP_ADMIN_USER-ID=rest-admin
       - FLOWABLE_REST_APP_ADMIN_PASSWORD=test
@@ -42,7 +50,7 @@ services:
     image: flowable/flowable-rest:6.8.0
     profiles: ["flowable-6"]
     ports:
-      - "${PI_ENGINE_B_PORT:-8082}:8080"
+      - "${PI_BIND_ADDRESS:-127.0.0.1}:${PI_ENGINE_B_PORT:-8082}:8080"
     environment:
       - FLOWABLE_REST_APP_ADMIN_USER-ID=rest-admin
       - FLOWABLE_REST_APP_ADMIN_PASSWORD=test
@@ -51,7 +59,7 @@ services:
     image: flowable/flowable-rest:7.1.0
     profiles: ["flowable-7"]
     ports:
-      - "${PI_ENGINE_7_PORT:-8083}:8080"
+      - "${PI_BIND_ADDRESS:-127.0.0.1}:${PI_ENGINE_7_PORT:-8083}:8080"
     environment:
       - FLOWABLE_REST_APP_ADMIN_USER-ID=rest-admin
       - FLOWABLE_REST_APP_ADMIN_PASSWORD=test
@@ -61,7 +69,7 @@ services:
     image: flowable/flowable-rest:7.2.0
     profiles: ["flowable-72"]
     ports:
-      - "${PI_ENGINE_72_PORT:-8094}:8080"
+      - "${PI_BIND_ADDRESS:-127.0.0.1}:${PI_ENGINE_72_PORT:-8094}:8080"
     environment:
       - FLOWABLE_REST_APP_ADMIN_USER-ID=rest-admin
       - FLOWABLE_REST_APP_ADMIN_PASSWORD=test
@@ -70,7 +78,7 @@ services:
     image: flowable/flowable-rest:8.0.0
     profiles: ["flowable-80"]
     ports:
-      - "${PI_ENGINE_80_PORT:-8095}:8080"
+      - "${PI_BIND_ADDRESS:-127.0.0.1}:${PI_ENGINE_80_PORT:-8095}:8080"
     environment:
       - FLOWABLE_REST_APP_ADMIN_USER-ID=rest-admin
       - FLOWABLE_REST_APP_ADMIN_PASSWORD=test
@@ -79,7 +87,7 @@ services:
     image: flowable/flowable-rest:6.3.1
     profiles: ["legacy"]
     ports:
-      - "${PI_ENGINE_LEGACY_PORT:-8084}:8080"
+      - "${PI_BIND_ADDRESS:-127.0.0.1}:${PI_ENGINE_LEGACY_PORT:-8084}:8080"
     environment:
       - FLOWABLE_REST_APP_ADMIN_USER-ID=rest-admin
       - FLOWABLE_REST_APP_ADMIN_PASSWORD=test
@@ -111,7 +119,7 @@ services:
     image: ${PI_FLAP_IMAGE:-ghcr.io/x3kcl/flap:latest}
     profiles: ["flap"]
     ports:
-      - "${PI_ENGINE_FLAP_PORT:-8086}:8080"
+      - "${PI_BIND_ADDRESS:-127.0.0.1}:${PI_ENGINE_FLAP_PORT:-8086}:8080"
     environment:
       # In-memory H2: the harness is disposable and seeds itself over REST on every run, so there
       # is no state worth a volume — and none to leak between runs.
@@ -135,7 +143,7 @@ services:
     image: postgres:16-alpine
     profiles: ["postgres"]
     ports:
-      - "${PI_PG_PORT:-5433}:5432"
+      - "${PI_BIND_ADDRESS:-127.0.0.1}:${PI_PG_PORT:-5433}:5432"
     environment:
       - POSTGRES_DB=inspector
       - POSTGRES_USER=inspector

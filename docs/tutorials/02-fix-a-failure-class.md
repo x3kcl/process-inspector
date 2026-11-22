@@ -1,6 +1,6 @@
 # Tutorial 02 — Fix a failure class: group retry with per-item outcomes
 
-**Sign in as:** `responder` (password `dev`) at <https://pi.naumann.cloud>. RESPONDER is
+**Sign in as:** `responder` (public demo password `demo`) at <https://pi.naumann.cloud>. RESPONDER is
 the L1/L2 rung: tier-0 verbs, unstick, notes — and the bulk retry doors used here.
 
 **You will learn:** how one error-class card becomes one tracked bulk job with per-item

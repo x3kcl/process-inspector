@@ -29,6 +29,10 @@
     <!-- CI matrix legs skip the unit suite (already run in the unit job) without
          killing failsafe: -Dskip.surefire.tests=true. -DskipTests would skip both. -->
     <skip.surefire.tests>false</skip.surefire.tests>
+    <!-- `mvn spring-boot:run` listens on loopback only. LAN access is an opt-in:
+         PI_BIND_ADDRESS=0.0.0.0 mvn spring-boot:run (profile bind-address-env below). The jar and
+         the image are unaffected: a container must listen on all of its own interfaces. -->
+    <pi.bind.address>127.0.0.1</pi.bind.address>
   </properties>
 
   <dependencies>
@@ -201,6 +205,11 @@
       <plugin>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-maven-plugin</artifactId>
+        <configuration>
+          <systemPropertyVariables>
+            <server.address>${pi.bind.address}</server.address>
+          </systemPropertyVariables>
+        </configuration>
         <executions>
           <!-- GET /api/diag build-info block (issue #96) + /actuator/info: writes
                META-INF/build-info.properties, which Spring Boot auto-configures into a
@@ -510,4 +519,18 @@
       </plugin>
     </plugins>
   </build>
+
+  <profiles>
+    <profile>
+      <id>bind-address-env</id>
+      <activation>
+        <property>
+          <name>env.PI_BIND_ADDRESS</name>
+        </property>
+      </activation>
+      <properties>
+        <pi.bind.address>${env.PI_BIND_ADDRESS}</pi.bind.address>
+      </properties>
+    </profile>
+  </profiles>
 </project>

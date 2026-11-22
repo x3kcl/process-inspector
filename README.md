@@ -14,7 +14,7 @@ instances across **multiple independent Flowable engines** — strictly via the 
 | File | Content |
 |---|---|
 | [docs/PRODUCT-GUIDE.md](docs/PRODUCT-GUIDE.md) | **The user-facing manual**: roles, every surface (triage landing, incidents, search, instance/case detail, bulk, admin), how to read the honesty markers, and which actions exist at which role floor |
-| [docs/tutorials/](docs/tutorials/) | Eight task-based walkthroughs — sign in to the demo (https://pi.naumann.cloud, ladder users, password `dev`) or the local dev compose and follow the numbered steps |
+| [docs/tutorials/](docs/tutorials/) | Eight task-based walkthroughs — sign in to the demo (https://pi.naumann.cloud, users `viewer`/`responder`/`operator`, public password `demo`) or the local dev compose (all ladder users, password `dev`) and follow the numbered steps |
 | [docs/OPERATOR-QUICK-START.md](docs/OPERATOR-QUICK-START.md) | Ten minutes of onboarding before your first shift; pair with [docs/AUDIT-ATTRIBUTION.md](docs/AUDIT-ATTRIBUTION.md) before your first mutation |
 | [docs/START-HERE.md](docs/START-HERE.md) | Two pages: what it is, the three stages, where each doc's truth lives, how to run and change it |
 | [docs/RUNBOOK.md](docs/RUNBOOK.md) · [docs/OPERATIONS.md](docs/OPERATIONS.md) | Operating the Inspector itself: health, recovery, break-glass, threat model, CI gates |
@@ -132,7 +132,16 @@ npm run gen:api      # regenerate src/api/schema.d.ts from the RUNNING BFF's /v3
 ```
 
 Sign-in in dev uses the BFF's built-in ladder users (`viewer`/`responder`/`operator`/`admin`,
-password `dev` unless `INSPECTOR_DEV_PASSWORD` is set).
+password `dev` unless `INSPECTOR_DEV_PASSWORD` is set). The dev compose stack, `mvn spring-boot:run`
+and the Vite dev server listen on loopback only; set `PI_BIND_ADDRESS=0.0.0.0` to opt in to LAN
+access (never with the default credentials on a shared network).
+
+On the public demo only `viewer`, `responder` and `operator` are public, with the password
+`demo`. The administrative personas (`admin`, `registry-admin`, `registry-admin-2`,
+`access-admin`, `metrics`) are not public there; use the local stack for the flows that need
+them. A deployment can split its logins the same way: `inspector.security.public-users` sign
+in with `inspector.security.public-password` only, every other user with
+`inspector.security.dev-password` only (OPERATIONS §5).
 
 ## Status
 

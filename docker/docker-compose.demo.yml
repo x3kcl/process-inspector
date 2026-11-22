@@ -16,8 +16,10 @@
 #   seed (one-shot) deploys the demo processes + starts one instance per status arc.
 #
 # Only `frontend` is exposed; the BFF, engines and DB have NO host ports and never touch the
-# discovery network. Sign in with the ladder users viewer/responder/operator/admin
-# (password ${INSPECTOR_DEV_PASSWORD:-dev}).
+# discovery network. Sign-in: the PUBLIC demo users (PI_DEMO_PUBLIC_USERS in docker/.env.demo,
+# default viewer/responder/operator) use PI_DEMO_PUBLIC_PASSWORD; every other user (admin,
+# registry-admin, registry-admin-2, access-admin, metrics) keeps INSPECTOR_DEV_PASSWORD from the
+# secrets file. See docker/DEMO-DEPLOY.md "Sign-in".
 #
 # ⚠️ issue #377 (READ THIS before you `--force-recreate` an engine): each engine now carries
 # its own named volume over flowable-rest's embedded H2 datastore — see the per-service
@@ -29,13 +31,23 @@
 # any operation that would recreate an engine container unless `--allow-engine-recreate` is
 # passed (see that script).
 #
-# Overridable via the shell env or `--env-file docker/.env.demo`:
-#   NAUMANN_CLOUD, PI_SUBDOMAIN, INSPECTOR_DEV_PASSWORD, POSTGRES_PASSWORD
+# Overridable via the shell env or `--env-file docker/.env.demo`: NAUMANN_CLOUD, PI_SUBDOMAIN.
 #
-# The two demo engines keep the flowable-rest image's well-known default creds
-# (rest-admin / test) — seed.sh and the BFF below both expect them; they are throwaway
-# in-network engines with no host port, so this is not a real secret.
+# Secrets come from a SECOND env file that lives outside git (mode 600), default
+# ~/.config/process-inspector-demo/secrets.env (deploy-demo.sh / rollback-demo.sh pass it):
+#   ENGINE_A_PASSWORD, ENGINE_B_PASSWORD, ENGINE_7_PASSWORD   flowable-rest admin, per engine
+#   POSTGRES_PASSWORD                                          BFF database role
+#   INSPECTOR_DEV_PASSWORD                                     private sign-in password
+# None has a default: compose refuses to start without them, so the images' well-known
+# rest-admin/test login never exists on this stack. No service publishes a host port.
 name: process-inspector-demo
+
+# Baseline hardening shared by every long-running service (merged in with `<<:`).
+x-hardening: &hardening
+  restart: unless-stopped
+  security_opt: ["no-new-privileges:true"]
+  pids_limit: 256
+  mem_limit: 256m
 
 services:
   # ⚠️ STATEFUL (issue #377). `flowable/flowable-rest` defaults to an embedded H2 database
@@ -63,22 +75,26 @@ services:
     image: flowable/flowable-rest:6.8.0
     environment:
       - FLOWABLE_REST_APP_ADMIN_USER-ID=rest-admin
-      - FLOWABLE_REST_APP_ADMIN_PASSWORD=test
+      - FLOWABLE_REST_APP_ADMIN_PASSWORD=${ENGINE_A_PASSWORD:?ENGINE_A_PASSWORD is unset — see docker/DEMO-DEPLOY.md}
     volumes:
       - inspector-demo-engine-a-home:/home/flowable
     networks: [internal]
-    restart: unless-stopped
+    <<: *hardening
+    pids_limit: 512
+    mem_limit: 1280m
 
   # ⚠️ STATEFUL (issue #377) — same embedded-H2 exposure and fix as engine-a above.
   engine-b:
     image: flowable/flowable-rest:6.8.0
     environment:
       - FLOWABLE_REST_APP_ADMIN_USER-ID=rest-admin
-      - FLOWABLE_REST_APP_ADMIN_PASSWORD=test
+      - FLOWABLE_REST_APP_ADMIN_PASSWORD=${ENGINE_B_PASSWORD:?ENGINE_B_PASSWORD is unset — see docker/DEMO-DEPLOY.md}
     volumes:
       - inspector-demo-engine-b-home:/home/flowable
     networks: [internal]
-    restart: unless-stopped
+    <<: *hardening
+    pids_limit: 512
+    mem_limit: 1280m
 
   # The V7 engine. `application.yml` has ALWAYS declared an `engine-7` entry (placeholder
   # INSPECTOR_ENGINE_7_BASE_URL, defaulting to the dev harness's localhost:8083) — until this
@@ -91,8 +107,8 @@ services:
   # publish; adding either means adding it to the matrix FIRST (docker-compose.dev.yml +
   # ci.yml), not here.
   #
-  # V7 keeps the war layout — same /flowable-rest/service context and the same well-known
-  # creds as the 6.8 images above — so seed.sh needs no special case. (An engine that EMBEDS
+  # V7 keeps the war layout — same /flowable-rest/service context and the same admin
+  # user as the 6.8 images above — so seed.sh needs no special case. (An engine that EMBEDS
   # Flowable publishes /process-api at the ROOT instead; that's the `flap` Boot-layout engine
   # in the dev harness, a different shape entirely.)
   #
@@ -106,18 +122,20 @@ services:
     image: flowable/flowable-rest:7.1.0
     environment:
       - FLOWABLE_REST_APP_ADMIN_USER-ID=rest-admin
-      - FLOWABLE_REST_APP_ADMIN_PASSWORD=test
+      - FLOWABLE_REST_APP_ADMIN_PASSWORD=${ENGINE_7_PASSWORD:?ENGINE_7_PASSWORD is unset — see docker/DEMO-DEPLOY.md}
     volumes:
       - inspector-demo-engine-7-home:/home/flowable
     networks: [internal]
-    restart: unless-stopped
+    <<: *hardening
+    pids_limit: 512
+    mem_limit: 1280m
 
   postgres:
     image: postgres:16-alpine
     environment:
       - POSTGRES_DB=inspector
       - POSTGRES_USER=inspector
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-inspector}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is unset — see docker/DEMO-DEPLOY.md}
     volumes:
       - inspector-demo-pgdata:/var/lib/postgresql/data
       # Docker-native backups (issue #201-followup): a custom pg_hba.conf, extending the
@@ -158,7 +176,8 @@ services:
       timeout: 3s
       retries: 24
     networks: [internal]
-    restart: unless-stopped
+    <<: *hardening
+    mem_limit: 1g
 
   audit-backup:
     # Docker-native nightly LOGICAL backup (issue #201-followup) — supersedes
@@ -174,7 +193,7 @@ services:
     environment:
       - PGHOST=postgres
       - PGUSER=inspector
-      - PGPASSWORD=${POSTGRES_PASSWORD:-inspector}
+      - PGPASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is unset — see docker/DEMO-DEPLOY.md}
       - PGDATABASE=inspector
       - PI_BACKUP_RETENTION_DAYS=35
     volumes:
@@ -185,7 +204,7 @@ services:
       postgres:
         condition: service_healthy
     networks: [internal]
-    restart: unless-stopped
+    <<: *hardening
 
   audit-basebackup:
     # Docker-native weekly PHYSICAL base backup (issue #201-followup) — supersedes
@@ -200,7 +219,7 @@ services:
     environment:
       - PGHOST=postgres
       - PGUSER=inspector
-      - PGPASSWORD=${POSTGRES_PASSWORD:-inspector}
+      - PGPASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is unset — see docker/DEMO-DEPLOY.md}
       - PI_BASEBACKUP_RETENTION_COUNT=3
     volumes:
       - ./backup/audit-basebackup:/scripts:ro
@@ -210,7 +229,8 @@ services:
       postgres:
         condition: service_healthy
     networks: [internal]
-    restart: unless-stopped
+    <<: *hardening
+    mem_limit: 512m
 
   wal-receiver:
     # Docker-native continuous WAL capture (issue #201-followup) — supersedes issue #201's
@@ -223,7 +243,7 @@ services:
     environment:
       - PGHOST=postgres
       - PGUSER=inspector
-      - PGPASSWORD=${POSTGRES_PASSWORD:-inspector}
+      - PGPASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is unset — see docker/DEMO-DEPLOY.md}
       - PI_WAL_SLOT=wal_receiver
     volumes:
       - ./backup/wal-receiver:/scripts:ro
@@ -233,7 +253,7 @@ services:
       postgres:
         condition: service_healthy
     networks: [internal]
-    restart: unless-stopped
+    <<: *hardening
 
   backend:
     # Pinned by digest (issue #92) — never a floating tag, so what's running is always
@@ -269,7 +289,7 @@ services:
       # BFF-owned Postgres (Flyway + audit/notes/bulk store).
       - INSPECTOR_DB_URL=jdbc:postgresql://postgres:5432/inspector
       - INSPECTOR_DB_USER=inspector
-      - INSPECTOR_DB_PASSWORD=${POSTGRES_PASSWORD:-inspector}
+      - INSPECTOR_DB_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is unset — see docker/DEMO-DEPLOY.md}
       # Point the two demo engines at their in-network hostnames. These are per-value
       # placeholders in application.yml — NOT indexed list binding, which would drop the
       # engines' id/environment/auth and fail startup.
@@ -310,11 +330,20 @@ services:
       # now fails the port rail for every port that matters (issue #391, from the #375
       # close-out review). A prod inspector sets this strictly out-of-band regardless.
       - INSPECTOR_REGISTRY_EGRESS_PORTS_0=8080
-      - ENGINE_A_PASSWORD=test
-      - ENGINE_B_PASSWORD=test
-      - ENGINE_7_PASSWORD=test
-      # Demo sign-in ladder password (dev auth chain; oidc profile is off here).
-      - INSPECTOR_DEV_PASSWORD=${INSPECTOR_DEV_PASSWORD:-dev}
+      - ENGINE_A_PASSWORD=${ENGINE_A_PASSWORD:?ENGINE_A_PASSWORD is unset}
+      - ENGINE_B_PASSWORD=${ENGINE_B_PASSWORD:?ENGINE_B_PASSWORD is unset}
+      - ENGINE_7_PASSWORD=${ENGINE_7_PASSWORD:?ENGINE_7_PASSWORD is unset}
+      # Private sign-in password of the dev auth chain (oidc profile is off here). Set as
+      # INSPECTOR_SECURITY_DEVPASSWORD, the name of `inspector.security.dev-password` itself, so
+      # it takes precedence over any other source.
+      - INSPECTOR_SECURITY_DEVPASSWORD=${INSPECTOR_DEV_PASSWORD:?INSPECTOR_DEV_PASSWORD is unset — see docker/DEMO-DEPLOY.md}
+      # Public demo logins: the listed users sign in with the public password ONLY, everyone
+      # else with the private one above ONLY. Both come from docker/.env.demo (public by
+      # definition; the secrets file may override). Both empty = no public logins (fail-closed:
+      # an older .env.demo restored by rollback-demo.sh simply has none). Half set, or a public
+      # password equal to the private one, stops the BFF at startup.
+      - INSPECTOR_SECURITY_PUBLICPASSWORD=${PI_DEMO_PUBLIC_PASSWORD:-}
+      - INSPECTOR_SECURITY_PUBLICUSERS=${PI_DEMO_PUBLIC_USERS:-}
       # Tracing stays off on a normal up. Compose cannot set these only when the
       # observability profile is active — pass them with that profile (OPERATIONS §2).
       # The published demo digest does not contain engine.corrective until the next image.
@@ -325,7 +354,9 @@ services:
       postgres:
         condition: service_healthy
     networks: [internal]
-    restart: unless-stopped
+    <<: *hardening
+    pids_limit: 512
+    mem_limit: 2g
 
   frontend:
     # Pinned by digest (issue #92) — see the `backend` service above for the rationale.
@@ -349,7 +380,7 @@ services:
     # window while leaving the PREVIOUS frontend serving if the backend never comes up.
     depends_on: [backend]
     networks: [internal, discovery]
-    restart: unless-stopped
+    <<: *hardening
     labels:
       - "traefik.enable=true"
       # The frontend is on TWO networks (internal + the proxy net), so Traefik must be told
@@ -387,6 +418,10 @@ services:
   seed:
     image: alpine:3.20
     depends_on: [engine-a, engine-b, engine-7]
+    environment:
+      - ENGINE_A_PASSWORD=${ENGINE_A_PASSWORD:?ENGINE_A_PASSWORD is unset}
+      - ENGINE_B_PASSWORD=${ENGINE_B_PASSWORD:?ENGINE_B_PASSWORD is unset}
+      - ENGINE_7_PASSWORD=${ENGINE_7_PASSWORD:?ENGINE_7_PASSWORD is unset}
     volumes:
       - ./:/seed:ro
     entrypoint: ["/bin/sh", "-c"]
@@ -394,14 +429,18 @@ services:
       - |
         set -e
         apk add --no-cache bash curl python3 >/dev/null
-        for e in engine-a engine-b engine-7; do
-          url="http://$$e:8080/flowable-rest/service"
-          echo "waiting for $$e ..."
-          until curl -sf -u "rest-admin:test" -o /dev/null "$$url/management/engine"; do sleep 3; done
+        for e in engine-a:$$ENGINE_A_PASSWORD engine-b:$$ENGINE_B_PASSWORD engine-7:$$ENGINE_7_PASSWORD; do
+          host=$${e%%:*}
+          url="http://$$host:8080/flowable-rest/service"
+          export SEED_CRED="rest-admin:$${e#*:}"
+          echo "waiting for $$host ..."
+          until curl -sf -u "$$SEED_CRED" -o /dev/null "$$url/management/engine"; do sleep 3; done
           bash /seed/seed.sh "$$url"
         done
         echo "demo seed complete."
     networks: [internal]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 256m
     restart: "no"
 
   # Optional local view of metrics and traces (#469, #564). Not part of the public demo.
@@ -417,7 +456,7 @@ services:
         printf '%s' "$${INSPECTOR_DEV_PASSWORD}" > /etc/prometheus/scrape-password
         exec /bin/prometheus --config.file=/etc/prometheus/prometheus.yml
     environment:
-      INSPECTOR_DEV_PASSWORD: ${INSPECTOR_DEV_PASSWORD:-dev}
+      INSPECTOR_DEV_PASSWORD: ${INSPECTOR_DEV_PASSWORD:?INSPECTOR_DEV_PASSWORD is unset — see docker/DEMO-DEPLOY.md}
     volumes:
       - ../deploy/prometheus/prometheus.demo.yml:/etc/prometheus/prometheus.yml:ro
       - ../deploy/prometheus/alert-rules.yml:/etc/prometheus/alert-rules.yml:ro

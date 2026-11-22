@@ -1,6 +1,6 @@
 # Tutorial 08 — Handover & audit: notes, tickets, the shift report, and who really did what
 
-**Sign in as:** `responder` (password `dev`) at <https://pi.naumann.cloud>. Reading audit
+**Sign in as:** `responder` (public demo password `demo`) at <https://pi.naumann.cloud>. Reading audit
 surfaces is VIEWER-floor; adding notes needs RESPONDER.
 
 **You will learn:** the HANDOVER half of the incident loop — leaving a trail the next shift

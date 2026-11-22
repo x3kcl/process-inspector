@@ -1,7 +1,7 @@
 # Tutorial 01 — Triage first look: read Stage 0 without touching anything
 
-**Sign in as:** `viewer` (password `dev`) at <https://pi.naumann.cloud> — or your local
-stack at `http://localhost:5173`. Everything here is read-only; a VIEWER can do all of it.
+**Sign in as:** `viewer` (public demo password `demo`) at <https://pi.naumann.cloud> — or your
+local stack at `http://localhost:5173` (password `dev`). Everything here is read-only; a VIEWER can do all of it.
 
 **You will learn:** how the triage landing answers "what is broken, how much, where" — and
 how to read its numbers honestly (lower bounds, "as of" stamps, jobs vs. instances).

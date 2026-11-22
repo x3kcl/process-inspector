@@ -17,6 +17,18 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COMPOSE_FILE="$REPO_ROOT/docker/docker-compose.demo.yml"
 ENV_FILE="$REPO_ROOT/docker/.env.demo"
+# Secrets (engine admin passwords, Postgres, sign-in) live OUTSIDE git in a mode-600 env file,
+# passed as a SECOND --env-file so its values win over anything in .env.demo (an old
+# .env.demo restored by rollback-demo.sh still carries the former committed defaults).
+SECRETS_FILE="${PI_DEMO_SECRETS_FILE:-$HOME/.config/process-inspector-demo/secrets.env}"
+if [[ ! -f "$SECRETS_FILE" ]]; then
+  echo "REFUSING: secrets file not found: $SECRETS_FILE (see docker/DEMO-DEPLOY.md)" >&2
+  exit 1
+fi
+if [[ "$(stat -c %a "$SECRETS_FILE")" != "600" ]]; then
+  echo "REFUSING: $SECRETS_FILE must be mode 600" >&2
+  exit 1
+fi
 
 # issue #377 — same engine-recreate guard as deploy-demo.sh (see that script's header comment
 # for the full incident rationale). Neither `up` call below targets the engines today; this
@@ -34,8 +46,8 @@ TOPOLOGY_DRIFT_OK=0
 assert_no_topology_drift() {
   [[ "$TOPOLOGY_DRIFT_OK" == 1 ]] && return 0
   local declared running missing extra
-  declared="$(docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" config --services 2>/dev/null | sort)"
-  running="$(docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps --services --all 2>/dev/null | sort)"
+  declared="$(docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" --env-file "$SECRETS_FILE" config --services 2>/dev/null | sort)"
+  running="$(docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" --env-file "$SECRETS_FILE" ps --services --all 2>/dev/null | sort)"
   [[ -n "$declared" ]] || die "could not read the compose service list — refusing to roll back blind"
   missing="$(comm -23 <(printf '%s\n' "$declared") <(printf '%s\n' "$running") | tr '\n' ' ' | sed 's/ *$//')"
   extra="$(comm -13 <(printf '%s\n' "$declared") <(printf '%s\n' "$running") | tr '\n' ' ' | sed 's/ *$//')"
@@ -80,7 +92,7 @@ compose_up_guarded() {
       done
     done
   fi
-  docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up "$@"
+  docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" --env-file "$SECRETS_FILE" up "$@"
 }
 
 while [[ "${1:-}" == --* ]]; do
@@ -121,7 +133,7 @@ mv "$TMP_ENV" "$ENV_FILE"
 trap - EXIT
 
 echo "Pulling + redeploying..."
-docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" pull backend frontend
+docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" --env-file "$SECRETS_FILE" pull backend frontend
 # `postgres` stays excluded — see deploy-demo.sh's identical comment (issue #201): an
 # unscoped `up -d` would also reconcile `postgres`'s `command:`/pg_hba drift, turning a
 # routine rollback into an unintended Postgres restart. The three Docker-native backup
