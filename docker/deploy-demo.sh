@@ -34,6 +34,18 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COMPOSE_FILE="$REPO_ROOT/docker/docker-compose.demo.yml"
 ENV_FILE="$REPO_ROOT/docker/.env.demo"
+# Secrets (engine admin passwords, Postgres, sign-in) live OUTSIDE git in a mode-600 env file,
+# passed as a SECOND --env-file so its values win over anything in .env.demo (an old
+# .env.demo restored by rollback-demo.sh still carries the former committed defaults).
+SECRETS_FILE="${PI_DEMO_SECRETS_FILE:-$HOME/.config/process-inspector-demo/secrets.env}"
+if [[ ! -f "$SECRETS_FILE" ]]; then
+  echo "REFUSING: secrets file not found: $SECRETS_FILE (see docker/DEMO-DEPLOY.md)" >&2
+  exit 1
+fi
+if [[ "$(stat -c %a "$SECRETS_FILE")" != "600" ]]; then
+  echo "REFUSING: $SECRETS_FILE must be mode 600" >&2
+  exit 1
+fi
 BFF_IMAGE="ghcr.io/x3kcl/process-inspector-bff"
 WEB_IMAGE="ghcr.io/x3kcl/process-inspector-web"
 DIGEST_RE='^sha256:[0-9a-f]{64}$'
@@ -80,11 +92,11 @@ TOPOLOGY_DRIFT_OK=0
 assert_no_topology_drift() {
   [[ "$TOPOLOGY_DRIFT_OK" == 1 ]] && return 0
   local declared running missing extra
-  declared="$(docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" config --services 2>/dev/null | sort)"
+  declared="$(docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" --env-file "$SECRETS_FILE" config --services 2>/dev/null | sort)"
   # `ps --services` lists services with containers for THIS project, running or not; a
   # one-shot service that has already exited still counts as applied, which is what we want
   # (`seed` must not be reported as missing just because it did its job and stopped).
-  running="$(docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps --services --all 2>/dev/null | sort)"
+  running="$(docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" --env-file "$SECRETS_FILE" ps --services --all 2>/dev/null | sort)"
   if [[ -z "$declared" ]]; then
     die "could not read the compose service list — refusing to deploy blind"
   fi
@@ -180,7 +192,7 @@ EPHEMERAL
 # just cannot be waited on, so say that and carry on rather than block for 3 minutes.
 wait_for_healthy() {
   local svc="$1" deadline=$(( SECONDS + ${HEALTH_TIMEOUT:-180} )) cid status
-  cid="$(docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps -q "$svc")" || cid=""
+  cid="$(docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" --env-file "$SECRETS_FILE" ps -q "$svc")" || cid=""
   [[ -n "$cid" ]] || die "wait_for_healthy: no container for service '$svc' — did 'up -d $svc' run?"
   # `ps -q` prints one id per REPLICA. Nothing here is scaled today (this returns exactly one
   # line), but if anything ever is, a multi-line $cid would be passed straight to `docker
@@ -212,7 +224,7 @@ wait_for_healthy() {
     esac
     (( SECONDS < deadline )) || {
       echo ""
-      docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" logs --no-color --tail 40 "$svc" >&2 || true
+      docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" --env-file "$SECRETS_FILE" logs --no-color --tail 40 "$svc" >&2 || true
       die "'$svc' did not report healthy within ${HEALTH_TIMEOUT:-180}s (last status: $status). The frontend was deliberately NOT touched — the previous one is still serving. Fix, or roll back with docker/rollback-demo.sh."
     }
     echo -n "."
@@ -253,7 +265,7 @@ compose_up_guarded() {
       done
     done
   fi
-  docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up "$@"
+  docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" --env-file "$SECRETS_FILE" up "$@"
 }
 
 DRY_RUN=0
@@ -323,7 +335,7 @@ rm -f "$ENV_FILE.bak"
 # it creates — if this line ever names a path that can be deleted, the deploy is the bug.
 echo "Compose bind-mount root (frozen into the containers): $REPO_ROOT/docker"
 echo "Pulling + redeploying..."
-docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" pull backend frontend
+docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" --env-file "$SECRETS_FILE" pull backend frontend
 # `up -d` is scoped, deliberately excluding `postgres` — NOT a blanket `up -d`. Since issue
 # #201, docker-compose.demo.yml's `postgres` service carries a `command:`/pg_hba override that
 # isn't yet applied to the live container; an unscoped `up -d` would detect that config drift

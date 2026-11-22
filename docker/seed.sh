@@ -21,7 +21,8 @@ set -euo pipefail
 # The flowable-rest images' well-known account. Reassigned per engine during discovery —
 # every helper below reads this global — because the `flap` engine is an APPLICATION that
 # embeds Flowable and issues its own service account instead.
-CRED="rest-admin:test"
+# SEED_CRED overrides it for an engine that does not use the default (the demo stack).
+CRED="${SEED_CRED:-rest-admin:test}"
 DIR="$(cd "$(dirname "$0")" && pwd)"
 # One descriptor per harness engine: port|context-path|credentials. Ports are
 # env-overridable (default = doctrinal dev ports) to match a remapped self-hosted-runner

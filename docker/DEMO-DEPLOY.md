@@ -70,8 +70,35 @@ docker exec process-inspector-demo-audit-backup-1 /scripts/backup-once.sh   # ca
 ```
 
 Sign in with the ladder users `viewer` / `responder` / `operator` / `admin`
-(password = `INSPECTOR_DEV_PASSWORD`, default `dev`). Override host/creds in
+(password = `INSPECTOR_DEV_PASSWORD` from the secrets file below). Override the host in
 `docker/.env.demo`.
+
+## Secrets — outside git, no defaults
+
+Every password of this stack lives in ONE env file outside the repository, mode 600 in a
+700 directory:
+
+```
+~/.config/process-inspector-demo/secrets.env     # override the path with PI_DEMO_SECRETS_FILE
+  ENGINE_A_PASSWORD / ENGINE_B_PASSWORD / ENGINE_7_PASSWORD   flowable-rest admin (user rest-admin)
+  POSTGRES_PASSWORD                                           BFF database role
+  INSPECTOR_DEV_PASSWORD                                      sign-in password
+```
+
+`deploy-demo.sh` and `rollback-demo.sh` refuse to run without it and pass it as a second
+`--env-file`, so its values win over `docker/.env.demo`. The compose file has no defaults for
+these (`${VAR:?}`): the flowable-rest images' well-known `rest-admin`/`test` login never
+exists on this stack, and nothing publishes a host port. A manual compose call needs both
+files:
+
+```bash
+docker compose -p process-inspector-demo -f docker/docker-compose.demo.yml \
+  --env-file docker/.env.demo --env-file ~/.config/process-inspector-demo/secrets.env ps
+```
+
+Rotating a password means recreating the services that read it. For an engine with an
+existing volume, check afterwards that the OLD password gets 401: the admin user is stored in
+the engine's own database, so a changed env value is not guaranteed to reach it.
 
 ## Topology changes are NOT applied by these scripts (issue #370)
 
