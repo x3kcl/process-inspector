@@ -331,8 +331,10 @@ services:
       - ENGINE_A_PASSWORD=${ENGINE_A_PASSWORD:?ENGINE_A_PASSWORD is unset}
       - ENGINE_B_PASSWORD=${ENGINE_B_PASSWORD:?ENGINE_B_PASSWORD is unset}
       - ENGINE_7_PASSWORD=${ENGINE_7_PASSWORD:?ENGINE_7_PASSWORD is unset}
-      # Demo sign-in ladder password (dev auth chain; oidc profile is off here).
-      - INSPECTOR_DEV_PASSWORD=${INSPECTOR_DEV_PASSWORD:?INSPECTOR_DEV_PASSWORD is unset — see docker/DEMO-DEPLOY.md}
+      # Demo sign-in ladder password (dev auth chain; oidc profile is off here). The BFF binds
+      # `inspector.security.dev-password`, i.e. INSPECTOR_SECURITY_DEVPASSWORD — nothing maps
+      # INSPECTOR_DEV_PASSWORD onto it, so without this line the password silently stays "dev".
+      - INSPECTOR_SECURITY_DEVPASSWORD=${INSPECTOR_DEV_PASSWORD:?INSPECTOR_DEV_PASSWORD is unset — see docker/DEMO-DEPLOY.md}
       # Tracing stays off on a normal up. Compose cannot set these only when the
       # observability profile is active — pass them with that profile (OPERATIONS §2).
       # The published demo digest does not contain engine.corrective until the next image.
