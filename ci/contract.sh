@@ -38,6 +38,7 @@ lint() {
   bash scripts/check-orphan-its.sh
   bash scripts/front-door-selftest.sh
   bash scripts/ci-coverage-selftest.sh
+  bash scripts/compose-bind-selftest.sh
 }
 
 unit() {
