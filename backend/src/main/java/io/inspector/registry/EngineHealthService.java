@@ -31,6 +31,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
@@ -59,6 +61,15 @@ public class EngineHealthService {
     private final StartByKeyRepository startKeys;
     private final Map<String, HealthAdvisor.Hold> advice = new ConcurrentHashMap<>();
     private final ExecutorService probePool = MdcPropagatingExecutors.newVirtualThreadPerTaskExecutor();
+    /** Last definite activity-history answer per engine; never holds a failed probe. No lock spans the HTTP call. */
+    private final Map<String, HistoryAnswer> historyAnswers = new ConcurrentHashMap<>();
+
+    private final Duration historyProbeTtl;
+
+    private record HistoryAnswer(String version, boolean recorded, Instant probedAt) {}
+
+    /** Default re-probe interval; the history level only changes on an engine restart or redeploy. */
+    static final Duration DEFAULT_HISTORY_PROBE_TTL = Duration.ofHours(6);
 
     public EngineHealthService(
             EngineRegistry registry,
@@ -67,6 +78,19 @@ public class EngineHealthService {
             Clock clock,
             SnapshotCountRepository snapshots,
             StartByKeyRepository startKeys) {
+        this(registry, flowable, dmn, clock, snapshots, startKeys, DEFAULT_HISTORY_PROBE_TTL);
+    }
+
+    @Autowired
+    public EngineHealthService(
+            EngineRegistry registry,
+            ProcessApiClient flowable,
+            DmnApiClient dmn,
+            Clock clock,
+            SnapshotCountRepository snapshots,
+            StartByKeyRepository startKeys,
+            @Value("${inspector.health.activity-history-probe-ttl:PT6H}") Duration historyProbeTtl) {
+        this.historyProbeTtl = historyProbeTtl;
         this.registry = registry;
         this.flowable = flowable;
         this.dmn = dmn;
@@ -104,8 +128,10 @@ public class EngineHealthService {
                 .findFirst()
                 .orElse(null);
         if (engine == null) {
+            historyAnswers.remove(engineId);
             return; // not an enabled engine (disabled/removed) — nothing to probe
         }
+        historyAnswers.remove(engineId); // the endpoint may have changed: do not reuse the old answer
         try {
             registry.updateHealth(engineId, probeOne(engine));
         } catch (Exception ex) {
@@ -121,9 +147,11 @@ public class EngineHealthService {
             EngineInfoRecord info = flowable.engineInfo(engine, CallPriority.INTERACTIVE);
             version = info != null && info.version() != null ? info.version() : "unknown";
         } catch (CallNotPermittedException open) {
+            historyAnswers.remove(engine.id());
             return EngineHealth.unreachable("circuit open — engine shedding load", clock.millis());
         } catch (Exception ex) {
             log.debug("Health probe failed for {}: {}", engine.id(), ex.toString());
+            historyAnswers.remove(engine.id()); // unreachable → re-probe once it is back
             return EngineHealth.unreachable(rootMessage(ex), clock.millis());
         }
 
@@ -141,8 +169,7 @@ public class EngineHealthService {
             } catch (RuntimeException ex) {
                 log.debug("DMN probe skipped for {}: {}", engine.id(), ex.toString());
             }
-            EngineCapabilities capabilities = EngineCapabilities.fromVersion(
-                            version, flowable.probeActivityHistory(engine, CallPriority.INTERACTIVE))
+            EngineCapabilities capabilities = EngineCapabilities.fromVersion(version, activityHistory(engine, version))
                     .withIdm(idm)
                     .withDmnHistory(dmnHistory);
             Long history = historyCount(engine);
@@ -205,6 +232,24 @@ public class EngineHealthService {
                     null,
                     null);
         }
+    }
+
+    /**
+     * The probe is an unfiltered count over the engine's activity-history table, so it is cached per engine:
+     * re-asked only with no answer yet, a changed engine version, or an expired TTL (unreachable and registry
+     * edits drop the answer). A probe that throws is not cached; the next sweep retries it.
+     */
+    private boolean activityHistory(EngineConfig engine, String version) {
+        Instant now = clock.instant();
+        HistoryAnswer cached = historyAnswers.get(engine.id());
+        if (cached != null
+                && cached.version().equals(version)
+                && now.isBefore(cached.probedAt().plus(historyProbeTtl))) {
+            return cached.recorded();
+        }
+        boolean recorded = flowable.probeActivityHistory(engine, CallPriority.INTERACTIVE);
+        historyAnswers.put(engine.id(), new HistoryAnswer(version, recorded, now));
+        return recorded;
     }
 
     /** Age of the oldest executable job (dueDate, falling back to createTime), floored at 0. */

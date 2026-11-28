@@ -153,6 +153,7 @@ availability (history level ≥ activity). Probed 2026-10-23 on `flowable-rest:7
 (`version` `7.2.0`) and `:8.0.0` (`version` `8.0.0`): `changeState`, `migration`,
 `externalWorkerJobs`, `scopeType`, and `activityHistory` were all true. `8.0.0` does not
 start with `7.`; `fromVersion` already treats major ≥ 7 as past every 6.x cliff.
+The `activityHistory` probe is an unfiltered count on the engine, so its answer is cached per engine and re-asked only on a version change, after the engine was unreachable, or after `inspector.health.activity-history-probe-ttl` (default `PT6H`); a failed probe is never cached.
 Capability-flagged features are greyed in the UI
 **with the reason** and rejected by the BFF — never a confusing engine-side 404 at click time.
 The Stage-0 out-of-scope-dead-letter tally (§2.3, R-SEM-20) is an explicit consumer of
